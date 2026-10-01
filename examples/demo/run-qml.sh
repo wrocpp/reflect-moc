@@ -9,7 +9,9 @@ IMG=reflect-moc/gcc16-qt610-gui
 docker image inspect "$IMG" >/dev/null 2>&1 || docker build -t "$IMG" -f docker/Dockerfile.gui docker
 MODE=${1:-}
 PORT=${RQT_PORT:-6080}
-exec docker run --rm -e LC_ALL=C.UTF-8 -p "$PORT":6080 -v "$PWD":/src -w /src "$IMG" sh -c '
+# the browser port is only needed for the interactive window, not for screenshots
+if [ "$MODE" = "--screenshot" ]; then PORTARG=""; else PORTARG="-p $PORT:6080"; fi
+exec docker run --rm -e LC_ALL=C.UTF-8 $PORTARG -v "$PWD":/src -w /src "$IMG" sh -c '
   QT=/opt/qt
   OUT=build/demo
   mkdir -p "$OUT"
