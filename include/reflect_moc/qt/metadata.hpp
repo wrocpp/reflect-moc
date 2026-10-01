@@ -159,7 +159,7 @@ constexpr auto classinfo_block() {
   } else {
     return []<std::size_t... I>(std::index_sequence<I...>) {
       std::array<unsigned, 2> const rows[n] = {
-          {string_index<D>(classinfo_list<D>[I].key), string_index<D>(classinfo_list<D>[I].value)}...};
+          {string_index<D>(classinfo_list<D>[I].key.view()), string_index<D>(classinfo_list<D>[I].value.view())}...};
       return QtMocHelpers::ClassInfos<static_cast<int>(n)>(rows);
     }(std::make_index_sequence<n>{});
   }

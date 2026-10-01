@@ -131,9 +131,8 @@ consteval std::string_view param_name(info p) {
 
 // --- properties ----------------------------------------------------------------------
 
-// A reflection that stands for "none". Neither a null reflection nor the global
-// namespace can be stored in a static array (reflect_constant fails), so void is
-// the sentinel: no function, member or property type reflects it.
+// A reflection that stands for "none": void, which no function, member or
+// property reflects.
 consteval info absent() { return ^^void; }
 consteval bool present(info r) { return r != absent(); }
 
@@ -172,15 +171,15 @@ consteval info resolve_notify(info cls, info anchor, std::string_view name) {
 }
 
 consteval void resolve_accessors(prop_desc& d, info cls, property const& p) {
-  if (std::string_view{p.write}.size()) {
-    d.write = find_function(cls, d.anchor, p.write, "WRITE", [](info m) { return arity(m) == 1; },
+  if (!p.write.view().empty()) {
+    d.write = find_function(cls, d.anchor, p.write.view(), "WRITE", [](info m) { return arity(m) == 1; },
                             "needs a member function with one parameter");
     d.writable = true;
   }
-  if (std::string_view{p.reset}.size())
-    d.reset = find_function(cls, d.anchor, p.reset, "RESET", [](info m) { return arity(m) == 0; },
+  if (!p.reset.view().empty())
+    d.reset = find_function(cls, d.anchor, p.reset.view(), "RESET", [](info m) { return arity(m) == 0; },
                             "needs a member function without parameters");
-  if (std::string_view{p.notify}.size()) d.notify = resolve_notify(cls, d.anchor, p.notify);
+  if (!p.notify.view().empty()) d.notify = resolve_notify(cls, d.anchor, p.notify.view());
 }
 
 consteval prop_desc make_prop(info cls, info anchor) {
@@ -191,9 +190,9 @@ consteval prop_desc make_prop(info cls, info anchor) {
     d.type = meta::remove_cvref(meta::type_of(anchor));
     d.writable = !meta::is_const(meta::type_of(anchor));
   } else if (meta::is_function(anchor)) {
-    d.read = std::string_view{p.read}.empty()
+    d.read = p.read.view().empty()
                  ? anchor
-                 : find_function(cls, anchor, p.read, "READ", [](info m) { return arity(m) == 0; },
+                 : find_function(cls, anchor, p.read.view(), "READ", [](info m) { return arity(m) == 0; },
                                  "needs a member function without parameters");
     d.type = meta::remove_cvref(meta::return_type_of(d.read));
   } else {
@@ -210,9 +209,8 @@ consteval std::vector<prop_desc> make_props(info cls) {
   return out;
 }
 
-// prop_desc holds reflections, which cannot be stored in a static array here
-// (reflect_constant fails on the data-member and accessor reflections), so the
-// array holds member positions and property_at expands a row back.
+// The static array holds member positions, plain integers, and property_at
+// expands a row back into reflections where they are needed.
 struct prop_row {
   std::size_t anchor = 0;
   std::size_t member = 0;
@@ -347,8 +345,8 @@ consteval std::vector<std::string> make_strings(info cls) {
   pool.add(qualified_name(cls));
   pool.add("");
   for (auto ci : all<classinfo>(cls)) {
-    pool.add(ci.key);
-    pool.add(ci.value);
+    pool.add(ci.key.view());
+    pool.add(ci.value.view());
   }
   pool_methods(pool, cls);
   pool_properties(pool, cls);

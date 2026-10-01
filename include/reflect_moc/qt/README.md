@@ -28,7 +28,9 @@ struct Worker : rqt::Object<QThread> {            // default base: QObject
   [[=rqt::slot]]      void setValue(int);
   [[=rqt::invokable]] int  add(int);
 
-  enum class Mode [[=rqt::enum_]] { A, B };        // Q_ENUM; rqt::flag for Q_FLAG
+  enum class [[=rqt::enum_]] Mode { A, B };        // Q_ENUM; rqt::flag for Q_FLAG
+                                                   // (the attribute goes BEFORE the name; after it GCC reports
+                                                   //  "elaborated-type-specifier for a scoped enum must not use the 'class' keyword")
 };
 ```
 
@@ -61,7 +63,10 @@ that QML creates need E2 or E3.
 | `rqt::flag` | nested enum | `Q_FLAG` |
 | `rqt::classinfo{key, value}` | class | `Q_CLASSINFO` |
 
-`rqt::property` fields, all `char const*` and all optional:
+`rqt::property` fields, all optional. They are `rqt::name` (inline text, at most
+63 characters) and take a string literal: `.write = "setValue"`. A
+`char const*` in an annotation would fail on read-back with `reflect_constant failed`.
+`rqt::classinfo{key, value}` takes the same kind of literals (value up to 255 characters).
 
 | field | meaning |
 |---|---|

@@ -8,6 +8,8 @@
 
 #include <meta>
 
+#include <cstddef>
+#include <string_view>
 #include <vector>
 
 namespace rqt {
@@ -24,18 +26,40 @@ inline constexpr enum_t enum_{};
 struct flag_t {};
 inline constexpr flag_t flag{};
 
+// Text inside an annotation. A `char const*` that points at a string literal
+// is not a structural value, so reading the annotation back (extract) fails
+// with `reflect_constant failed`; the characters are stored inline instead.
+// A string literal converts implicitly: `.write = "setValue"`.
+inline constexpr std::size_t max_name_length = 64;
+inline constexpr std::size_t max_text_length = 256;
+
+template <std::size_t Capacity>
+struct text {
+  char data[Capacity]{};
+
+  constexpr text() = default;
+  template <std::size_t N>
+  constexpr text(char const (&literal)[N]) {
+    static_assert(N <= Capacity, "rqt: annotation text is longer than the capacity (max_name_length, max_text_length)");
+    for (std::size_t i = 0; i < N; ++i) data[i] = literal[i];
+  }
+  constexpr std::string_view view() const { return data; }
+};
+
+using name = text<max_name_length>;
+
 // On a getter (READ is the getter) or on a data member (MEMBER). Every name
 // is optional; an empty name means "none".
 struct property {
-  char const* read = "";
-  char const* write = "";
-  char const* notify = "";
-  char const* reset = "";
+  name read{};
+  name write{};
+  name notify{};
+  name reset{};
 };
 
 struct classinfo {
-  char const* key;
-  char const* value;
+  name key;
+  text<max_text_length> value;
 };
 
 namespace detail {
