@@ -261,12 +261,37 @@ int metacall_level(QObject* o, QMetaObject::Call c, int id, void** a) {
 
 }  // namespace detail
 
+namespace detail {
+
+// What Q_INTERFACES adds to moc's qt_metacast, found by reflection: a direct base that is not the
+// QObject base and has an interface id (Q_DECLARE_INTERFACE specializes qobject_interface_iid).
+template <meta::info C, std::size_t I, class Self>
+void interface_base(Self* self, char const* name, void*& found) {
+  using B = typename[:meta::type_of(meta::bases_of(C, unchecked)[I]):];
+  if constexpr (!std::is_base_of_v<QObject, B>) {
+    char const* const iid = qobject_interface_iid<B*>();
+    if (!found && iid && !std::strcmp(name, iid)) found = static_cast<void*>(static_cast<B*>(self));
+  }
+}
+
+template <meta::info C, class Self>
+void* interface_cast(Self* self, char const* name) {
+  void* found = nullptr;
+  [&]<std::size_t... I>(std::index_sequence<I...>) {
+    (interface_base<C, I>(self, name, found), ...);
+  }(std::make_index_sequence<meta::bases_of(C, unchecked).size()>{});
+  return found;
+}
+
+}  // namespace detail
+
 template <meta::info C, class Obj>
 void* metacast_impl(Obj* self, char const* name) {
   using Self = typename[:C:];
   using Base = typename[:detail::super_type(C):];
   if (!name) return nullptr;
   if (!std::strcmp(name, static_meta_object<Self>.className())) return static_cast<void*>(self);
+  if (void* const interface = detail::interface_cast<C>(self, name)) return interface;
   return self->Base::qt_metacast(name);
 }
 
