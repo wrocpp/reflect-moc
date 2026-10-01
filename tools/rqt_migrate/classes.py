@@ -74,11 +74,6 @@ _SLOTS_SECTION = re.compile(r"^(\s*)(public|protected|private)\s+(?:slots|Q_SLOT
 
 # Property attributes and the value that means "moc's default"; anything else
 # has no annotation field yet.
-_PROPERTY_DEFAULTS = {"designable": True, "scriptable": True, "stored": True, "user": False}
-
-# Q_PROPERTY flags that are true when written and have no annotation field.
-_PROPERTY_FLAGS = ("final", "constant", "required")
-
 _ACCESS_LABEL = re.compile(r"^\s*(public|protected|private)\b(?:\s+(?:slots|Q_SLOTS))?\s*:(?!:)")
 _SIGNALS_LABEL = re.compile(r"^\s*(?:signals|Q_SIGNALS)\s*:")
 _CLASS_KEY = re.compile(r"\b(class|struct)\b")
@@ -403,8 +398,8 @@ class ClassRewriter:
         if prop.get("privateClass"):
             self.report.manual(self.rel, line, "Q_PRIVATE_PROPERTY", UNSUPPORTED["Q_PRIVATE_PROPERTY"])
             return
-        unsupported = [k for k, default in _PROPERTY_DEFAULTS.items() if prop.get(k, default) != default]
-        unsupported += [k for k in ("bindable", "revision") if k in prop]
+        unsupported = [k for k in ("bindable", "revision") if k in prop]
+        fields: dict[str, str | bool] = {}
         read, member = prop.get("read"), prop.get("member")
         if read:
             target = self._find_member_declaration(rf"\b{re.escape(read)}\s*\(")
@@ -419,13 +414,17 @@ class ClassRewriter:
             self.report.manual(self.rel, line, "Q_PROPERTY",
                                f"`{name}`: the {what} is not declared in the class body")
             return
-        fields: list[tuple[str, str]] = []
         if (read or member) != name:
-            unsupported.append(f"NAME (the property is named `{read or member}`)")
+            fields["name"] = name
         for key in ("write", "notify", "reset"):
             if prop.get(key):
-                fields.append((key, prop[key]))
-        unsupported += [key.upper() for key in _PROPERTY_FLAGS if prop.get(key)]
+                fields[key] = prop[key]
+        for key, default in syntax.PROPERTY_FLAG_FIELDS.items():
+            value = prop.get(key, default)
+            if not isinstance(value, bool):
+                unsupported.append(f"{key.upper()} (an expression)")
+            elif value != default:
+                fields[key] = value
         text = self.src.lines[target].rstrip("\r\n")
         self.src.replace(target, indent_of(text) + syntax.property(fields) + " " + text.lstrip())
         if unsupported:

@@ -108,17 +108,15 @@ class Rewrites(unittest.TestCase):
                         '    [[=rqt::property{.write = "setValue", .notify = "valueChanged", .reset = "reset"}]] '
                         "int value() const { return m_value; }")
 
-    def test_limit_property_named_unlike_its_accessor_is_exposed_under_the_accessor_name(self):
-        self.assertLine(self.header, "    [[=rqt::property{}]] bool isEnabled() const;")
-        detail = " ".join(i.detail for i in items(self.result, "Q_PROPERTY", PARTIAL))
-        self.assertIn("NAME (the property is named `isEnabled`)", detail)
-        self.assertIn("CONSTANT", detail)
+    def test_capability_property_named_unlike_its_accessor_carries_name_and_flags(self):
+        self.assertLine(self.header, '    [[=rqt::property{.name = "enabled", .constant = true}]] bool isEnabled() const;')
 
     def test_capability_property_text_is_written_as_string_literals(self):
         self.assertNotIn("define_static_string", self.header)
-        self.assertNotIn(".name =", self.header)
-        self.assertNotIn(".constant =", self.header)
-        self.assertNotIn(".final =", self.header)
+
+    def test_capability_property_fields_follow_the_library_order(self):
+        self.assertEqual(syntax.property({"final": True, "name": "n", "write": "w", "stored": False}),
+                         '[[=rqt::property{.write = "w", .name = "n", .final = true, .stored = false}]]')
 
     def test_capability_multi_line_q_property_is_removed_whole(self):
         self.assertNotIn("Q_PROPERTY", self.header)
@@ -126,7 +124,7 @@ class Rewrites(unittest.TestCase):
         self.assertLine(self.header, '    [[=rqt::property{.write = "setRatio"}]] double ratio() const;')
 
     def test_capability_member_property_annotates_the_data_member(self):
-        self.assertLine(self.header, '    [[=rqt::property{.notify = "labelChanged"}]] QString m_label;')
+        self.assertLine(self.header, '    [[=rqt::property{.notify = "labelChanged", .name = "label"}]] QString m_label;')
 
     def test_capability_q_enum_annotates_the_enum(self):
         self.assertNotIn("Q_ENUM", self.header)
@@ -223,8 +221,9 @@ class Reports(unittest.TestCase):
     def test_limit_overloaded_signal_reported_once(self):
         self.assertEqual(len(items(self.result, "overloaded signal", PARTIAL)), 1)
 
-    def test_limit_property_attribute_without_annotation_field_reported(self):
-        self.assertIn("designable", self.detail("Q_PROPERTY", PARTIAL))
+    def test_capability_non_default_property_flags_are_emitted(self):
+        self.assertIn(".designable = false", self.result.files["signals.h"])
+        self.assertEqual(items(self.result, "Q_PROPERTY", PARTIAL), [])
 
     def test_limit_property_whose_accessor_is_not_in_the_class_reported(self):
         self.assertIn("baseValue", self.detail("Q_PROPERTY", MANUAL))
@@ -299,12 +298,14 @@ class Binding(unittest.TestCase):
         return self.header[start : self.header.index("\n};", start)]
 
     def test_capability_class_without_constructor_gets_a_forwarding_one_that_binds(self):
-        self.assertIn("template <class... Args> explicit Quiet(Args &&...args) : rqt::Object<QObject>"
+        self.assertIn("template <class... Args> requires rqt::forwardable<Quiet, Args...> "
+                      "explicit Quiet(Args &&...args) : rqt::Object<QObject>"
                       "(std::forward<Args>(args)...) { bind(); }", self.body("Quiet"))
         self.assertNotIn("using ", self.body("Quiet"))
 
     def test_capability_derived_class_forwards_to_the_new_direct_base(self):
-        self.assertIn("explicit Child(Args &&...args) : rqt::Object<Plain>(std::forward<Args>(args)...) { bind(); }",
+        self.assertIn("requires rqt::forwardable<Child, Args...> "
+                      "explicit Child(Args &&...args) : rqt::Object<Plain>(std::forward<Args>(args)...) { bind(); }",
                       self.body("Child"))
 
     def test_capability_inline_constructors_bind_first(self):
@@ -332,16 +333,16 @@ class Binding(unittest.TestCase):
 
     def test_capability_qobject_cast_target_gets_the_opt_in(self):
         self.assertIn("    static QMetaObject const &staticMetaObject;", self.body("Casted").splitlines())
-        self.assertIn("inline RQT_STATIC_META_OBJECT(Casted);", self.header.splitlines())
+        self.assertIn("RQT_STATIC_META_OBJECT(Casted);", self.header.splitlines())
 
     def test_capability_pointer_to_member_connect_sender_gets_the_opt_in(self):
-        self.assertIn("inline RQT_STATIC_META_OBJECT(Linked);", self.header.splitlines())
+        self.assertIn("RQT_STATIC_META_OBJECT(Linked);", self.header.splitlines())
 
     def test_capability_class_scoped_static_metaobject_use_gets_the_opt_in(self):
-        self.assertIn("inline RQT_STATIC_META_OBJECT(Meta);", self.header.splitlines())
+        self.assertIn("RQT_STATIC_META_OBJECT(Meta);", self.header.splitlines())
 
     def test_capability_class_used_as_a_property_type_gets_the_opt_in(self):
-        self.assertIn("inline RQT_STATIC_META_OBJECT(Plain);", self.header.splitlines())
+        self.assertIn("RQT_STATIC_META_OBJECT(Plain);", self.header.splitlines())
 
     def test_capability_class_nothing_refers_to_stays_without_the_opt_in(self):
         self.assertNotIn("staticMetaObject", self.body("Quiet"))

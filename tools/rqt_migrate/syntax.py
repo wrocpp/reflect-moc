@@ -38,7 +38,8 @@ def forwarding_constructor(cls: str, qt_base: str) -> str:
     An inherited constructor has no body, so it cannot call bind(). The
     forwarding constructor takes every argument list the base accepts.
     """
-    return (f"template <class... Args> explicit {cls}(Args &&...args) : {object_base(qt_base)}"
+    return (f"template <class... Args> requires rqt::forwardable<{cls}, Args...> "
+            f"explicit {cls}(Args &&...args) : {object_base(qt_base)}"
             f"(std::forward<Args>(args)...) {{ {BIND} }}")
 
 
@@ -53,7 +54,7 @@ def default_constructor(cls: str) -> str:
 # second follows the class; it is inline because a header's definition is
 # compiled into every translation unit that includes it.
 STATIC_META_OBJECT_DECLARATION = "static QMetaObject const &staticMetaObject;"
-STATIC_META_OBJECT_DEFINITION = "inline RQT_STATIC_META_OBJECT({cls});"
+STATIC_META_OBJECT_DEFINITION = "RQT_STATIC_META_OBJECT({cls});"
 
 SIGNAL = "[[=rqt::signal]]"
 SLOT = "[[=rqt::slot]]"
@@ -75,22 +76,26 @@ def enum(is_flag: bool) -> str:
     return "[[=rqt::flag]]" if is_flag else "[[=rqt::enum_]]"
 
 
-# The fields of rqt::property. Q_PROPERTY attributes outside this list (NAME
-# differing from the accessor, FINAL, CONSTANT, REQUIRED, ...) have no field.
-PROPERTY_FIELDS = ("read", "write", "notify", "reset")
+# The fields of rqt::property in declaration order (a designated initializer
+# must keep it), and the Q_PROPERTY attributes that are booleans with their default.
+PROPERTY_NAME_FIELDS = ("write", "notify", "reset", "name")
+PROPERTY_FLAG_FIELDS = {"final": False, "constant": False, "required": False, "user": False,
+                        "designable": True, "scriptable": True, "stored": True}
 
 
-def property(fields: list[tuple[str, str]]) -> str:
+def property(fields: dict[str, str | bool]) -> str:
     """The annotation on a property's READ accessor or MEMBER data member.
 
-    fields is an ordered list of (designator, text) pairs, e.g.
-    [("write", "setValue"), ("notify", "valueChanged")]. The text is written as
-    a string literal; the library stores it as rqt::name (at most 63 characters).
+    fields maps a field name to a string (written as a literal; the library stores
+    it as rqt::short_text, at most 63 characters) or to a bool. Only fields that
+    differ from the default are passed; they are emitted in the library's order.
     """
-    if not fields:
-        return "[[=rqt::property{}]]"
-    inner = ", ".join(f'.{name} = "{value}"' for name, value in fields)
-    return f"[[=rqt::property{{{inner}}}]]"
+    inner = []
+    for key in PROPERTY_NAME_FIELDS + tuple(PROPERTY_FLAG_FIELDS):
+        if key in fields:
+            value = fields[key]
+            inner.append(f".{key} = " + (str(value).lower() if isinstance(value, bool) else f'"{value}"'))
+    return f"[[=rqt::property{{{', '.join(inner)}}}]]"
 
 
 def classinfo(name_literal: str, value_literal: str) -> str:
