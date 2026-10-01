@@ -1,0 +1,37 @@
+// Copyright (C) 2023 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
+
+#ifndef HAPPYBIRTHDAYSONG_H
+#define HAPPYBIRTHDAYSONG_H
+
+#include <QQmlProperty>
+#include <QQmlPropertyValueSource>
+#include <qqml.h>
+#include <QStringList>
+#include <reflect_moc/qt.hpp>
+
+class [[=rqt::classinfo{"QML.Element", "auto"}]] [[=rqt::interface{^^QQmlPropertyValueSource}]] HappyBirthdaySong : public rqt::Object<QObject>, public QQmlPropertyValueSource
+{
+    QML_ELEMENT
+public:
+    explicit HappyBirthdaySong(QObject *parent = nullptr);
+
+    void setTarget(const QQmlProperty &) override;
+
+    [[=rqt::property{.write = "setName", .notify = "nameChanged", .final = true}]] QString name() const;
+    void setName(const QString &);
+
+public:
+    [[=rqt::signal]] void nameChanged() { rqt::emit{this}(); }
+
+private:
+    [[=rqt::slot]] void advance();
+
+private:
+    qsizetype m_line = -1;
+    QStringList m_lyrics;
+    QQmlProperty m_target;
+    QString m_name;
+};
+
+#endif // HAPPYBIRTHDAYSONG_H

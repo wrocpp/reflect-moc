@@ -1,0 +1,470 @@
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -6,6 +6,15 @@
+ 
+ find_package(Qt6 REQUIRED COMPONENTS Core Qml Quick)
+ qt_standard_project_setup()
++
++# rqt-migrate: reflect-moc builds the meta-objects from C++26 reflection, so
++# moc must not run.
++set(CMAKE_AUTOMOC OFF)
++set(CMAKE_CXX_STANDARD 26)
++set(CMAKE_CXX_STANDARD_REQUIRED ON)
++add_compile_definitions(QT_NO_KEYWORDS)
++add_compile_options($<$<COMPILE_LANGUAGE:CXX>:-freflection>)
++include_directories(${CMAKE_CURRENT_SOURCE_DIR}/../../../../include)
+ 
+ qt_policy(SET QTP0001 NEW)
+ 
+@@ -28,7 +37,7 @@
+ )
+ 
+ qt_add_qml_module(valuesource
+-    URI People
++    URI People NO_GENERATE_QMLTYPES
+     QML_FILES Main.qml
+     DEPENDENCIES
+         QtQuick
+@@ -64,7 +73,7 @@
+     Qt6::Quick
+ )
+ qt_add_qml_module(valuesource_harness
+-    URI People
++    URI People NO_GENERATE_QMLTYPES
+     QML_FILES Main.qml
+     OUTPUT_DIRECTORY harness/People
+     DEPENDENCIES
+--- a/birthdayparty.cpp
++++ b/birthdayparty.cpp
+@@ -12,7 +12,7 @@
+ {
+     if (m_rsvp != rsvpDate) {
+         m_rsvp = rsvpDate;
+-        emit rsvpChanged();
++        rsvpChanged();
+     }
+ }
+ 
+@@ -25,7 +25,7 @@
+ {
+     if (m_host != host) {
+         m_host = host;
+-        emit hostChanged();
++        hostChanged();
+     }
+ }
+ 
+@@ -44,7 +44,7 @@
+ void BirthdayParty::appendGuest(Person *guest)
+ {
+     m_guests.append(guest);
+-    emit guestsChanged();
++    guestsChanged();
+ }
+ 
+ qsizetype BirthdayParty::guestCount() const
+@@ -61,7 +61,7 @@
+ {
+     if (!m_guests.empty()) {
+         m_guests.clear();
+-        emit guestsChanged();
++        guestsChanged();
+     }
+ }
+ 
+@@ -69,7 +69,7 @@
+ {
+     if (m_guests.size() > index) {
+         m_guests[index] = guest;
+-        emit guestsChanged();
++        guestsChanged();
+     }
+ }
+ 
+@@ -77,7 +77,7 @@
+ {
+     if (!m_guests.empty()) {
+         m_guests.removeLast();
+-        emit guestsChanged();
++        guestsChanged();
+     }
+ }
+ 
+@@ -114,7 +114,7 @@
+ void BirthdayParty::startParty()
+ {
+     QDateTime time = QDateTime::currentDateTime();
+-    emit partyStarted(time);
++    partyStarted(time);
+ }
+ 
+ QString BirthdayParty::announcement() const
+@@ -126,7 +126,7 @@
+ {
+     if (m_announcement != announcement) {
+         m_announcement = announcement;
+-        emit announcementChanged();
++        announcementChanged();
+     }
+     qInfo().noquote() << announcement;
+ }
+--- a/birthdayparty.h
++++ b/birthdayparty.h
+@@ -11,44 +11,38 @@
+ #include <QObject>
+ #include <QQmlListProperty>
+ #include <qqml.h>
++#include <reflect_moc/qt.hpp>
+ 
+-class BirthdayPartyAttached : public QObject
++class [[=rqt::classinfo{"QML.Element", "anonymous"}]] BirthdayPartyAttached : public rqt::Object<QObject>
+ {
+-    Q_OBJECT
+-    Q_PROPERTY(QDate rsvp READ rsvp WRITE setRsvp NOTIFY rsvpChanged FINAL)
+     QML_ANONYMOUS
+ public:
+-    using QObject::QObject;
++    using rqt::Object<QObject>::Object;
+ 
+-    QDate rsvp() const;
++    [[=rqt::property{.write = "setRsvp", .notify = "rsvpChanged", .final = true}]] QDate rsvp() const;
+     void setRsvp(QDate);
+ 
+-signals:
+-    void rsvpChanged();
++public:
++    [[=rqt::signal]] void rsvpChanged() { rqt::emit{this}(); }
+ 
+ private:
+     QDate m_rsvp;
+ };
+ 
+-class BirthdayParty : public QObject
++class [[=rqt::classinfo{"DefaultProperty", "guests"}]] [[=rqt::classinfo{"QML.Element", "auto"}]] [[=rqt::classinfo{"QML.Attached", "BirthdayPartyAttached"}]] BirthdayParty : public rqt::Object<QObject>
+ {
+-    Q_OBJECT
+-    Q_PROPERTY(Person *host READ host WRITE setHost NOTIFY hostChanged FINAL)
+-    Q_PROPERTY(QQmlListProperty<Person> guests READ guests NOTIFY guestsChanged FINAL)
+-    Q_PROPERTY(QString announcement READ announcement WRITE setAnnouncement NOTIFY announcementChanged FINAL)
+-    Q_CLASSINFO("DefaultProperty", "guests")
+     QML_ELEMENT
+     QML_ATTACHED(BirthdayPartyAttached)
+ public:
+-    using QObject::QObject;
++    using rqt::Object<QObject>::Object;
+ 
+-    Person *host() const;
++    [[=rqt::property{.write = "setHost", .notify = "hostChanged", .final = true}]] Person *host() const;
+     void setHost(Person *);
+ 
+-    QString announcement() const;
++    [[=rqt::property{.write = "setAnnouncement", .notify = "announcementChanged", .final = true}]] QString announcement() const;
+     void setAnnouncement(const QString &);
+ 
+-    QQmlListProperty<Person> guests();
++    [[=rqt::property{.notify = "guestsChanged", .final = true}]] QQmlListProperty<Person> guests();
+     void appendGuest(Person *);
+     qsizetype guestCount() const;
+     Person *guest(qsizetype) const;
+@@ -60,11 +54,11 @@
+ 
+     void startParty();
+ 
+-signals:
+-    void hostChanged();
+-    void guestsChanged();
+-    void partyStarted(QDateTime time);
+-    void announcementChanged();
++public:
++    [[=rqt::signal]] void hostChanged() { rqt::emit{this}(); }
++    [[=rqt::signal]] void guestsChanged() { rqt::emit{this}(); }
++    [[=rqt::signal]] void partyStarted(QDateTime time) { rqt::emit{this}(time); }
++    [[=rqt::signal]] void announcementChanged() { rqt::emit{this}(); }
+ 
+ private:
+     static void appendGuest(QQmlListProperty<Person> *, Person *);
+--- a/happybirthdaysong.cpp
++++ b/happybirthdaysong.cpp
+@@ -5,7 +5,7 @@
+ 
+ #include <QTimer>
+ 
+-HappyBirthdaySong::HappyBirthdaySong(QObject *parent) : QObject(parent)
++HappyBirthdaySong::HappyBirthdaySong(QObject *parent) : rqt::Object<QObject>(parent)
+ {
+     auto *timer = new QTimer(this);
+     QObject::connect(timer, &QTimer::timeout, this, &HappyBirthdaySong::advance);
+@@ -26,7 +26,7 @@
+ {
+     if (m_name != name) {
+         m_name = name;
+-        emit nameChanged();
++        nameChanged();
+     }
+ 
+     m_lyrics.clear();
+--- a/happybirthdaysong.h
++++ b/happybirthdaysong.h
+@@ -8,26 +8,24 @@
+ #include <QQmlPropertyValueSource>
+ #include <qqml.h>
+ #include <QStringList>
++#include <reflect_moc/qt.hpp>
+ 
+-class HappyBirthdaySong : public QObject, public QQmlPropertyValueSource
++class [[=rqt::classinfo{"QML.Element", "auto"}]] [[=rqt::interface{^^QQmlPropertyValueSource}]] HappyBirthdaySong : public rqt::Object<QObject>, public QQmlPropertyValueSource
+ {
+-    Q_OBJECT
+-    Q_INTERFACES(QQmlPropertyValueSource)
+-    Q_PROPERTY(QString name READ name WRITE setName NOTIFY nameChanged FINAL)
+     QML_ELEMENT
+ public:
+     explicit HappyBirthdaySong(QObject *parent = nullptr);
+ 
+     void setTarget(const QQmlProperty &) override;
+ 
+-    QString name() const;
++    [[=rqt::property{.write = "setName", .notify = "nameChanged", .final = true}]] QString name() const;
+     void setName(const QString &);
+ 
+-signals:
+-    void nameChanged();
++public:
++    [[=rqt::signal]] void nameChanged() { rqt::emit{this}(); }
+ 
+-private slots:
+-    void advance();
++private:
++    [[=rqt::slot]] void advance();
+ 
+ private:
+     qsizetype m_line = -1;
+--- a/harness.cpp
++++ b/harness.cpp
+@@ -16,6 +16,7 @@
+ 
+ #include <cstdio>
+ #include <memory>
++#include "rqt_qml_types.hpp"
+ 
+ namespace {
+ 
+@@ -40,6 +41,7 @@
+                                 &HappyBirthdaySong::staticMetaObject})
+     harness::dump_meta(mo);
+ 
++  rqt_register_qml_types();
+   QQmlEngine engine;
+   QQmlComponent component(&engine);
+   component.loadFromModule("People", "Main");
+--- a/main.cpp
++++ b/main.cpp
+@@ -8,11 +8,13 @@
+ #include <QDebug>
+ #include <QQmlComponent>
+ #include <QQmlEngine>
++#include "rqt_qml_types.hpp"
+ 
+ int main(int argc, char **argv)
+ {
+     QCoreApplication app(argc, argv);
+ 
++    rqt_register_qml_types();
+     QQmlEngine engine;
+     QQmlComponent component(&engine);
+     component.loadFromModule("People", "Main");
+--- a/person.cpp
++++ b/person.cpp
+@@ -3,7 +3,7 @@
+ 
+ #include "person.h"
+ 
+-Person::Person(QObject *parent) : QObject(parent)
++Person::Person(QObject *parent) : rqt::Object<QObject>(parent)
+ {
+     m_shoe = new ShoeDescription(this);
+ }
+@@ -17,7 +17,7 @@
+ {
+     if (m_size != size) {
+         m_size = size;
+-        emit shoeChanged();
++        shoeChanged();
+     }
+ }
+ 
+@@ -30,7 +30,7 @@
+ {
+     if (m_color != color) {
+         m_color = color;
+-        emit shoeChanged();
++        shoeChanged();
+     }
+ }
+ 
+@@ -43,7 +43,7 @@
+ {
+     if (m_brand != brand) {
+         m_brand = brand;
+-        emit shoeChanged();
++        shoeChanged();
+     }
+ }
+ 
+@@ -56,7 +56,7 @@
+ {
+     if (m_price != price) {
+         m_price = price;
+-        emit shoeChanged();
++        shoeChanged();
+     }
+ }
+ 
+@@ -75,7 +75,7 @@
+ {
+     if (m_name != name) {
+         m_name = name;
+-        emit nameChanged();
++        nameChanged();
+     }
+ }
+ 
+@@ -91,6 +91,6 @@
+ 
+     if (*m_shoe != *shoe) {
+         m_shoe = shoe;
+-        emit shoeChanged();
++        shoeChanged();
+     }
+ }
+--- a/person.h
++++ b/person.h
+@@ -7,28 +7,24 @@
+ #include <QtQml/qqml.h>
+ #include <QColor>
+ #include <QObject>
++#include <reflect_moc/qt.hpp>
+ 
+-class ShoeDescription : public QObject
++class [[=rqt::classinfo{"QML.Element", "anonymous"}]] ShoeDescription : public rqt::Object<QObject>
+ {
+-    Q_OBJECT
+-    Q_PROPERTY(int size READ size WRITE setSize NOTIFY shoeChanged FINAL)
+-    Q_PROPERTY(QColor color READ color WRITE setColor NOTIFY shoeChanged FINAL)
+-    Q_PROPERTY(QString brand READ brand WRITE setBrand NOTIFY shoeChanged FINAL)
+-    Q_PROPERTY(qreal price READ price WRITE setPrice NOTIFY shoeChanged FINAL)
+     QML_ANONYMOUS
+ public:
+-    using QObject::QObject;
++    using rqt::Object<QObject>::Object;
+ 
+-    int size() const;
++    [[=rqt::property{.write = "setSize", .notify = "shoeChanged", .final = true}]] int size() const;
+     void setSize(int);
+ 
+-    QColor color() const;
++    [[=rqt::property{.write = "setColor", .notify = "shoeChanged", .final = true}]] QColor color() const;
+     void setColor(const QColor &);
+ 
+-    QString brand() const;
++    [[=rqt::property{.write = "setBrand", .notify = "shoeChanged", .final = true}]] QString brand() const;
+     void setBrand(const QString &);
+ 
+-    qreal price() const;
++    [[=rqt::property{.write = "setPrice", .notify = "shoeChanged", .final = true}]] qreal price() const;
+     void setPrice(qreal);
+ 
+     friend bool operator==(const ShoeDescription &lhs, const ShoeDescription &rhs)
+@@ -40,8 +36,8 @@
+         return !operatorEqualsImpl(lhs, rhs);
+     }
+ 
+-signals:
+-    void shoeChanged();
++public:
++    [[=rqt::signal]] void shoeChanged() { rqt::emit{this}(); }
+ 
+ private:
+     static bool operatorEqualsImpl(const ShoeDescription &, const ShoeDescription &);
+@@ -52,47 +48,42 @@
+     qreal m_price = 0;
+ };
+ 
+-class Person : public QObject
++class [[=rqt::classinfo{"QML.Element", "auto"}]] [[=rqt::classinfo{"QML.Creatable", "false"}]] [[=rqt::classinfo{"QML.UncreatableReason", "Person is an abstract base class."}]] Person : public rqt::Object<QObject>
+ {
+-    Q_OBJECT
+-    Q_PROPERTY(QString name READ name WRITE setName NOTIFY nameChanged FINAL)
+-    Q_PROPERTY(ShoeDescription *shoe READ shoe WRITE setShoe NOTIFY shoeChanged FINAL)
+     QML_ELEMENT
+     QML_UNCREATABLE("Person is an abstract base class.")
+ public:
+-    using QObject::QObject;
++    using rqt::Object<QObject>::Object;
+ 
+     Person(QObject *parent = nullptr);
+ 
+-    QString name() const;
++    [[=rqt::property{.write = "setName", .notify = "nameChanged", .final = true}]] QString name() const;
+     void setName(const QString &);
+ 
+-    ShoeDescription *shoe() const;
++    [[=rqt::property{.write = "setShoe", .notify = "shoeChanged", .final = true}]] ShoeDescription *shoe() const;
+     void setShoe(ShoeDescription *shoe);
+ 
+-signals:
+-    void nameChanged();
+-    void shoeChanged();
++public:
++    [[=rqt::signal]] void nameChanged() { rqt::emit{this}(); }
++    [[=rqt::signal]] void shoeChanged() { rqt::emit{this}(); }
+ 
+ private:
+     QString m_name;
+     ShoeDescription *m_shoe = nullptr;
+ };
+ 
+-class Boy : public Person
++class [[=rqt::classinfo{"QML.Element", "auto"}]] Boy : public rqt::Object<Person>
+ {
+-    Q_OBJECT
+     QML_ELEMENT
+ public:
+-    using Person::Person;
++    using rqt::Object<Person>::Object;
+ };
+ 
+-class Girl : public Person
++class [[=rqt::classinfo{"QML.Element", "auto"}]] Girl : public rqt::Object<Person>
+ {
+-    Q_OBJECT
+     QML_ELEMENT
+ public:
+-    using Person::Person;
++    using rqt::Object<Person>::Object;
+ };
+ 
+ #endif // PERSON_H
+--- /dev/null
++++ b/rqt_qml_types.hpp
+@@ -0,0 +1,20 @@
++// Generated by tools/rqt-migrate. With moc gone, qmltyperegistrar has no
++// metatypes to read, so the QML_ELEMENT family is registered here instead.
++#pragma once
++
++#include <QtQml/qqml.h>
++
++#include "birthdayparty.h"
++#include "happybirthdaysong.h"
++#include "person.h"
++
++inline void rqt_register_qml_types()
++{
++    qmlRegisterAnonymousType<BirthdayPartyAttached>("People", 1);
++    qmlRegisterType<BirthdayParty>("People", 1, 0, "BirthdayParty");
++    qmlRegisterType<HappyBirthdaySong>("People", 1, 0, "HappyBirthdaySong");
++    qmlRegisterAnonymousType<ShoeDescription>("People", 1);
++    qmlRegisterUncreatableType<Person>("People", 1, 0, "Person", "Person is an abstract base class.");
++    qmlRegisterType<Boy>("People", 1, 0, "Boy");
++    qmlRegisterType<Girl>("People", 1, 0, "Girl");
++}

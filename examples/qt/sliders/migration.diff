@@ -1,0 +1,107 @@
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -7,6 +7,15 @@
+ find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets)
+ 
+ qt_standard_project_setup()
++
++# rqt-migrate: reflect-moc builds the meta-objects from C++26 reflection, so
++# moc must not run.
++set(CMAKE_AUTOMOC OFF)
++set(CMAKE_CXX_STANDARD 26)
++set(CMAKE_CXX_STANDARD_REQUIRED ON)
++add_compile_definitions(QT_NO_KEYWORDS)
++add_compile_options($<$<COMPILE_LANGUAGE:CXX>:-freflection>)
++include_directories(${CMAKE_CURRENT_SOURCE_DIR}/../../../../include)
+ 
+ qt_add_executable(sliders
+     main.cpp
+--- a/slidersgroup.cpp
++++ b/slidersgroup.cpp
+@@ -10,7 +10,7 @@
+ 
+ //! [0]
+ SlidersGroup::SlidersGroup(const QString &title, QWidget *parent)
+-    : QGroupBox(title, parent)
++    : rqt::Object<QGroupBox>(title, parent)
+ {
+     slider = new QSlider;
+     slider->setFocusPolicy(Qt::StrongFocus);
+--- a/slidersgroup.h
++++ b/slidersgroup.h
+@@ -5,6 +5,7 @@
+ #define SLIDERSGROUP_H
+ 
+ #include <QGroupBox>
++#include <reflect_moc/qt.hpp>
+ 
+ QT_BEGIN_NAMESPACE
+ class QDial;
+@@ -14,23 +15,22 @@
+ QT_END_NAMESPACE
+ 
+ //! [0]
+-class SlidersGroup : public QGroupBox
++class SlidersGroup : public rqt::Object<QGroupBox>
+ {
+-    Q_OBJECT
+ 
+ public:
+     SlidersGroup(const QString &title, QWidget *parent = nullptr);
+ 
+-signals:
+-    void valueChanged(int value);
++public:
++    [[=rqt::signal]] void valueChanged(int value) { rqt::emit{this}(value); }
+ 
+-public slots:
+-    void setValue(int value);
+-    void setMinimum(int value);
+-    void setMaximum(int value);
+-    void invertAppearance(bool invert);
+-    void invertKeyBindings(bool invert);
+-    void setOrientation(Qt::Orientation orientation);
++public:
++    [[=rqt::slot]] void setValue(int value);
++    [[=rqt::slot]] void setMinimum(int value);
++    [[=rqt::slot]] void setMaximum(int value);
++    [[=rqt::slot]] void invertAppearance(bool invert);
++    [[=rqt::slot]] void invertKeyBindings(bool invert);
++    [[=rqt::slot]] void setOrientation(Qt::Orientation orientation);
+ 
+ private:
+     QSlider *slider;
+--- a/window.cpp
++++ b/window.cpp
+@@ -11,7 +11,7 @@
+ 
+ //! [0]
+ Window::Window(QWidget *parent)
+-    : QWidget(parent)
++    : rqt::Object<QWidget>(parent)
+ {
+     slidersGroup = new SlidersGroup(tr("Sliders"));
+ 
+--- a/window.h
++++ b/window.h
+@@ -6,6 +6,8 @@
+ 
+ #include <QWidget>
+ #include <QGridLayout>
++#include <reflect_moc/qt.hpp>
++#include <QtCore/qcoreapplication.h>
+ 
+ QT_BEGIN_NAMESPACE
+ class QCheckBox;
+@@ -18,9 +20,9 @@
+ class SlidersGroup;
+ 
+ //! [0]
+-class Window : public QWidget
++class Window : public rqt::Object<QWidget>
+ {
+-    Q_OBJECT
++    Q_DECLARE_TR_FUNCTIONS(Window)
+ 
+ public:
+     Window(QWidget *parent = nullptr);
