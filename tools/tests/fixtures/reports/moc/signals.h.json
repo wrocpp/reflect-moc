@@ -1,0 +1,138 @@
+{
+ "classes": [
+  {
+   "className": "Emitter",
+   "lineNumber": 5,
+   "object": true,
+   "properties": [
+    {
+     "constant": false,
+     "designable": false,
+     "final": false,
+     "index": 0,
+     "lineNumber": 8,
+     "name": "hidden",
+     "read": "hidden",
+     "required": false,
+     "scriptable": true,
+     "stored": true,
+     "type": "int",
+     "user": false
+    },
+    {
+     "constant": false,
+     "designable": true,
+     "final": false,
+     "index": 1,
+     "lineNumber": 9,
+     "name": "inherited",
+     "read": "baseValue",
+     "required": false,
+     "scriptable": true,
+     "stored": true,
+     "type": "int",
+     "user": false
+    }
+   ],
+   "qualifiedClassName": "Emitter",
+   "signals": [
+    {
+     "access": "public",
+     "arguments": [
+      {
+       "name": "percent",
+       "type": "int"
+      },
+      {
+       "name": "text",
+       "type": "QString"
+      }
+     ],
+     "index": 0,
+     "lineNumber": 15,
+     "name": "progress",
+     "returnType": "void"
+    },
+    {
+     "access": "public",
+     "arguments": [
+      {
+       "name": "percent",
+       "type": "int"
+      }
+     ],
+     "index": 1,
+     "isCloned": true,
+     "lineNumber": 15,
+     "name": "progress",
+     "returnType": "void"
+    },
+    {
+     "access": "public",
+     "arguments": [
+      {
+       "type": "int"
+      }
+     ],
+     "index": 2,
+     "lineNumber": 16,
+     "name": "changed",
+     "returnType": "void"
+    },
+    {
+     "access": "public",
+     "arguments": [
+      {
+       "type": "QString"
+      }
+     ],
+     "index": 3,
+     "lineNumber": 17,
+     "name": "changed",
+     "returnType": "void"
+    }
+   ],
+   "slots": [
+    {
+     "access": "public",
+     "arguments": [
+      {
+       "name": "level",
+       "type": "int"
+      },
+      {
+       "name": "verbose",
+       "type": "bool"
+      }
+     ],
+     "index": 4,
+     "lineNumber": 13,
+     "name": "configure",
+     "returnType": "void"
+    },
+    {
+     "access": "public",
+     "arguments": [
+      {
+       "name": "level",
+       "type": "int"
+      }
+     ],
+     "index": 5,
+     "isCloned": true,
+     "lineNumber": 13,
+     "name": "configure",
+     "returnType": "void"
+    }
+   ],
+   "superClasses": [
+    {
+     "access": "public",
+     "name": "QObject"
+    }
+   ]
+  }
+ ],
+ "inputFile": "signals.h",
+ "outputRevision": 69
+}

@@ -1,0 +1,6 @@
+cmake_minimum_required(VERSION 3.16)
+project(reports LANGUAGES CXX)
+find_package(Qt6 REQUIRED COMPONENTS Core)
+qt_standard_project_setup()
+qt_wrap_cpp(MOC_SOURCES signals.h)
+add_executable(reports ${MOC_SOURCES})

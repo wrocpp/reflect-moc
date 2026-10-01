@@ -1,0 +1,214 @@
+{
+ "classes": [
+  {
+   "classInfos": [
+    {
+     "name": "Author",
+     "value": "Fixture \\\"quoted\\\""
+    }
+   ],
+   "className": "Counter",
+   "enums": [
+    {
+     "isClass": true,
+     "isFlag": false,
+     "lineNumber": 19,
+     "name": "Mode",
+     "values": [
+      "Up",
+      "Down"
+     ]
+    },
+    {
+     "alias": "Option",
+     "isClass": false,
+     "isFlag": true,
+     "lineNumber": 21,
+     "name": "Options",
+     "values": [
+      "None",
+      "Wrap",
+      "Clamp"
+     ]
+    }
+   ],
+   "lineNumber": 8,
+   "methods": [
+    {
+     "access": "public",
+     "arguments": [
+      {
+       "name": "n",
+       "type": "int"
+      }
+     ],
+     "index": 7,
+     "lineNumber": 33,
+     "name": "add",
+     "returnType": "int"
+    },
+    {
+     "access": "public",
+     "index": 8,
+     "isConst": true,
+     "lineNumber": 35,
+     "name": "describe",
+     "returnType": "QString"
+    }
+   ],
+   "object": true,
+   "properties": [
+    {
+     "constant": false,
+     "designable": true,
+     "final": false,
+     "index": 0,
+     "lineNumber": 11,
+     "name": "value",
+     "notify": "valueChanged",
+     "read": "value",
+     "required": false,
+     "reset": "reset",
+     "scriptable": true,
+     "stored": true,
+     "type": "int",
+     "user": false,
+     "write": "setValue"
+    },
+    {
+     "constant": true,
+     "designable": true,
+     "final": false,
+     "index": 1,
+     "lineNumber": 12,
+     "name": "enabled",
+     "read": "isEnabled",
+     "required": false,
+     "scriptable": true,
+     "stored": true,
+     "type": "bool",
+     "user": false
+    },
+    {
+     "constant": false,
+     "designable": true,
+     "final": false,
+     "index": 2,
+     "lineNumber": 13,
+     "member": "m_label",
+     "name": "label",
+     "notify": "labelChanged",
+     "required": false,
+     "scriptable": true,
+     "stored": true,
+     "type": "QString",
+     "user": false
+    },
+    {
+     "constant": false,
+     "designable": true,
+     "final": false,
+     "index": 3,
+     "lineNumber": 14,
+     "name": "ratio",
+     "read": "ratio",
+     "required": false,
+     "scriptable": true,
+     "stored": true,
+     "type": "double",
+     "user": false,
+     "write": "setRatio"
+    }
+   ],
+   "qualifiedClassName": "Counter",
+   "signals": [
+    {
+     "access": "public",
+     "arguments": [
+      {
+       "name": "value",
+       "type": "int"
+      }
+     ],
+     "index": 0,
+     "lineNumber": 39,
+     "name": "valueChanged",
+     "returnType": "void"
+    },
+    {
+     "access": "public",
+     "arguments": [
+      {
+       "type": "QString"
+      }
+     ],
+     "index": 1,
+     "lineNumber": 40,
+     "name": "labelChanged",
+     "returnType": "void"
+    },
+    {
+     "access": "public",
+     "arguments": [
+      {
+       "name": "from",
+       "type": "int"
+      },
+      {
+       "name": "to",
+       "type": "int"
+      }
+     ],
+     "index": 2,
+     "lineNumber": 41,
+     "name": "moved",
+     "returnType": "void"
+    }
+   ],
+   "slots": [
+    {
+     "access": "public",
+     "index": 3,
+     "lineNumber": 36,
+     "name": "clear",
+     "returnType": "void"
+    },
+    {
+     "access": "public",
+     "arguments": [
+      {
+       "name": "v",
+       "type": "int"
+      }
+     ],
+     "index": 4,
+     "lineNumber": 45,
+     "name": "setValue",
+     "returnType": "void"
+    },
+    {
+     "access": "public",
+     "index": 5,
+     "lineNumber": 46,
+     "name": "reset",
+     "returnType": "void"
+    },
+    {
+     "access": "private",
+     "index": 6,
+     "lineNumber": 49,
+     "name": "tick",
+     "returnType": "void"
+    }
+   ],
+   "superClasses": [
+    {
+     "access": "public",
+     "name": "QObject"
+    }
+   ]
+  }
+ ],
+ "inputFile": "counter.h",
+ "outputRevision": 69
+}

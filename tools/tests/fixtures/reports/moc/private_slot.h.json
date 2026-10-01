@@ -1,0 +1,37 @@
+{
+ "classes": [
+  {
+   "className": "PluginLike",
+   "lineNumber": 5,
+   "methods": [
+    {
+     "access": "public",
+     "index": 1,
+     "lineNumber": 12,
+     "name": "later",
+     "returnType": "void",
+     "revision": 65282
+    }
+   ],
+   "object": true,
+   "qualifiedClassName": "PluginLike",
+   "slots": [
+    {
+     "access": "private",
+     "index": 0,
+     "lineNumber": 9,
+     "name": "_q_done",
+     "returnType": "void"
+    }
+   ],
+   "superClasses": [
+    {
+     "access": "public",
+     "name": "QObject"
+    }
+   ]
+  }
+ ],
+ "inputFile": "private_slot.h",
+ "outputRevision": 69
+}

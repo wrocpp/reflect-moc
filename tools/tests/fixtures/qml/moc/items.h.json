@@ -1,0 +1,108 @@
+{
+ "classes": [
+  {
+   "classInfos": [
+    {
+     "name": "QML.Element",
+     "value": "auto"
+    }
+   ],
+   "className": "Plain",
+   "lineNumber": 6,
+   "object": true,
+   "qualifiedClassName": "Plain",
+   "superClasses": [
+    {
+     "access": "public",
+     "name": "QObject"
+    }
+   ]
+  },
+  {
+   "classInfos": [
+    {
+     "name": "QML.Element",
+     "value": "Fancy"
+    }
+   ],
+   "className": "Renamed",
+   "lineNumber": 12,
+   "object": true,
+   "qualifiedClassName": "Renamed",
+   "superClasses": [
+    {
+     "access": "public",
+     "name": "QObject"
+    }
+   ]
+  },
+  {
+   "classInfos": [
+    {
+     "name": "QML.Element",
+     "value": "anonymous"
+    }
+   ],
+   "className": "Hidden",
+   "lineNumber": 18,
+   "object": true,
+   "qualifiedClassName": "Hidden",
+   "superClasses": [
+    {
+     "access": "public",
+     "name": "QObject"
+    }
+   ]
+  },
+  {
+   "classInfos": [
+    {
+     "name": "QML.Element",
+     "value": "auto"
+    },
+    {
+     "name": "QML.Creatable",
+     "value": "false"
+    },
+    {
+     "name": "QML.UncreatableReason",
+     "value": "Abstract \\\"base\\\""
+    }
+   ],
+   "className": "Abstract",
+   "lineNumber": 24,
+   "object": true,
+   "qualifiedClassName": "Abstract",
+   "superClasses": [
+    {
+     "access": "public",
+     "name": "QObject"
+    }
+   ]
+  },
+  {
+   "classInfos": [
+    {
+     "name": "QML.Element",
+     "value": "auto"
+    },
+    {
+     "name": "QML.Singleton",
+     "value": "true"
+    }
+   ],
+   "className": "Lonely",
+   "lineNumber": 31,
+   "object": true,
+   "qualifiedClassName": "Lonely",
+   "superClasses": [
+    {
+     "access": "public",
+     "name": "QObject"
+    }
+   ]
+  }
+ ],
+ "inputFile": "items.h",
+ "outputRevision": 69
+}

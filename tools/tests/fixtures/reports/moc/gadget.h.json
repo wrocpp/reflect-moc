@@ -1,0 +1,75 @@
+{
+ "classes": [
+  {
+   "className": "Point",
+   "gadget": true,
+   "lineNumber": 13,
+   "properties": [
+    {
+     "constant": false,
+     "designable": true,
+     "final": false,
+     "index": 0,
+     "lineNumber": 16,
+     "member": "x",
+     "name": "x",
+     "required": false,
+     "scriptable": true,
+     "stored": true,
+     "type": "int",
+     "user": false
+    }
+   ],
+   "qualifiedClassName": "Point"
+  },
+  {
+   "className": "Circle",
+   "constructors": [
+    {
+     "access": "public",
+     "arguments": [
+      {
+       "name": "parent",
+       "type": "QObject*"
+      }
+     ],
+     "index": 0,
+     "lineNumber": 26,
+     "name": "Circle",
+     "returnType": ""
+    },
+    {
+     "access": "public",
+     "index": 1,
+     "isCloned": true,
+     "lineNumber": 26,
+     "name": "Circle",
+     "returnType": ""
+    }
+   ],
+   "interfaces": [
+    [
+     {
+      "className": "Shape",
+      "id": "\"org.example.Shape\""
+     }
+    ]
+   ],
+   "lineNumber": 21,
+   "object": true,
+   "qualifiedClassName": "Circle",
+   "superClasses": [
+    {
+     "access": "public",
+     "name": "QObject"
+    },
+    {
+     "access": "public",
+     "name": "Shape"
+    }
+   ]
+  }
+ ],
+ "inputFile": "gadget.h",
+ "outputRevision": 69
+}
