@@ -68,6 +68,7 @@ struct property {
   bool designable = true;
   bool scriptable = true;
   bool stored = true;
+  int index = -1;  // explicit position in the property table; -1: declaration order, after the indexed ones
 };
 
 struct classinfo {

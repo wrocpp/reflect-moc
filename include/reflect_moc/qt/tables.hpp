@@ -245,14 +245,44 @@ consteval unsigned property_flags_of(prop_desc const& d, property const& p) {
   return f;
 }
 
+consteval std::string number_text(int n) {
+  std::string s = n == 0 ? "0" : "";
+  for (int rest = n; rest > 0; rest /= 10) s.insert(s.begin(), static_cast<char>('0' + rest % 10));
+  return s;
+}
+
+struct indexed_prop {
+  int index;
+  prop_desc desc;
+};
+
+// Properties with an explicit .index come first, in index order, which must be
+// 0, 1, 2 ... without a gap or a duplicate; the others follow in declaration order.
 consteval std::vector<prop_desc> make_props(info cls) {
-  std::vector<prop_desc> out;
+  std::vector<indexed_prop> indexed;
+  std::vector<prop_desc> rest;
   for (auto m : meta::members_of(cls, unchecked))
     if (has<property>(m)) {
+      auto const annotation = get<property>(m);
       prop_desc d = make_prop(cls, m);
-      d.flags = property_flags_of(d, get<property>(m));
-      out.push_back(d);
+      d.flags = property_flags_of(d, annotation);
+      if (annotation.index < 0)
+        rest.push_back(d);
+      else
+        indexed.push_back({annotation.index, d});
     }
+  std::ranges::sort(indexed, [](indexed_prop const& a, indexed_prop const& b) { return a.index < b.index; });
+  std::vector<prop_desc> out;
+  for (std::size_t i = 0; i < indexed.size(); ++i) {
+    if (indexed[i].index != static_cast<int>(i))
+      throw meta::exception(cat({"rqt::property .index: in class ", meta::identifier_of(cls), " property '",
+                                 indexed[i].desc.name.view(), "' has index ", number_text(indexed[i].index),
+                                 " but the indexes must be 0, 1, 2 ... with no gap or duplicate; expected ",
+                                 number_text(static_cast<int>(i))}),
+                            indexed[i].desc.anchor);
+    out.push_back(indexed[i].desc);
+  }
+  out.insert(out.end(), rest.begin(), rest.end());
   return out;
 }
 
