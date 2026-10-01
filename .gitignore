@@ -2,3 +2,4 @@ build/
 *.o
 a.out
 .DS_Store
+build-examples/
