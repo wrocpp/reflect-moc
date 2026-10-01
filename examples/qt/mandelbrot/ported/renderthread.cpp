@@ -15,6 +15,7 @@ int RenderThread::numPasses = 8;
 RenderThread::RenderThread(QObject *parent)
     : rqt::Object<QThread>(parent)
 {
+    bind();
     for (int i = 0; i < ColormapSize; ++i)
         colormap[i] = rgbFromWaveLength(380.0 + (i * 400.0 / ColormapSize));
 }

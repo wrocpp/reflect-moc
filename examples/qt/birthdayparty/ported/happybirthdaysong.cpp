@@ -7,6 +7,7 @@
 
 HappyBirthdaySong::HappyBirthdaySong(QObject *parent) : rqt::Object<QObject>(parent)
 {
+    bind();
     auto *timer = new QTimer(this);
     QObject::connect(timer, &QTimer::timeout, this, &HappyBirthdaySong::advance);
     timer->start(1000);

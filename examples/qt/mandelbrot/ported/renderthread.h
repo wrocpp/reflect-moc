@@ -8,7 +8,7 @@
 #include <QSize>
 #include <QThread>
 #include <QWaitCondition>
-#include <reflect_moc/qt.hpp>
+#include <reflect_moc/qt/qt.hpp>
 
 QT_BEGIN_NAMESPACE
 class QImage;
@@ -19,6 +19,7 @@ class RenderThread : public rqt::Object<QThread>
 {
 
 public:
+    static QMetaObject const &staticMetaObject;
     RenderThread(QObject *parent = nullptr);
     ~RenderThread();
 
@@ -52,6 +53,7 @@ private:
     static constexpr int ColormapSize = 512;
     uint colormap[ColormapSize];
 };
+inline RQT_STATIC_META_OBJECT(RenderThread);
 //! [0]
 
 #endif // RENDERTHREAD_H

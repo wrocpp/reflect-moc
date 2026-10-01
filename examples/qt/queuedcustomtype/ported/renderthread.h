@@ -6,7 +6,7 @@
 
 #include <QImage>
 #include <QThread>
-#include <reflect_moc/qt.hpp>
+#include <reflect_moc/qt/qt.hpp>
 
 class Block;
 
@@ -15,6 +15,7 @@ class RenderThread : public rqt::Object<QThread>
 {
 
 public:
+    static QMetaObject const &staticMetaObject;
     RenderThread(QObject *parent = nullptr);
     ~RenderThread();
 
@@ -29,6 +30,7 @@ protected:
 private:
     QImage m_image;
 };
+inline RQT_STATIC_META_OBJECT(RenderThread);
 //! [RenderThread class definition]
 
 #endif

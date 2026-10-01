@@ -5,6 +5,7 @@
 
 Person::Person(QObject *parent) : rqt::Object<QObject>(parent)
 {
+    bind();
     m_shoe = new ShoeDescription(this);
 }
 

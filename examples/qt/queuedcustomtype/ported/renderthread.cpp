@@ -10,6 +10,7 @@
 RenderThread::RenderThread(QObject *parent)
     : rqt::Object<QThread>(parent)
 {
+    bind();
 }
 
 RenderThread::~RenderThread()

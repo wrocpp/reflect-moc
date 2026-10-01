@@ -9,7 +9,7 @@
 #include <QPixmap>
 #include <QPushButton>
 #include <QWidget>
-#include <reflect_moc/qt.hpp>
+#include <reflect_moc/qt/qt.hpp>
 #include <QtCore/qcoreapplication.h>
 
 class Block;
@@ -21,6 +21,7 @@ class Window : public rqt::Object<QWidget>
     Q_DECLARE_TR_FUNCTIONS(Window)
 
 public:
+    static QMetaObject const &staticMetaObject;
     Window(QWidget *parent = nullptr);
     void loadImage(const QImage &image);
 
@@ -39,6 +40,7 @@ private:
     QString path;
     RenderThread *thread;
 };
+inline RQT_STATIC_META_OBJECT(Window);
 //! [Window class definition]
 
 #endif

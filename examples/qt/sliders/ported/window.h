@@ -6,7 +6,7 @@
 
 #include <QWidget>
 #include <QGridLayout>
-#include <reflect_moc/qt.hpp>
+#include <reflect_moc/qt/qt.hpp>
 #include <QtCore/qcoreapplication.h>
 
 QT_BEGIN_NAMESPACE
@@ -25,6 +25,7 @@ class Window : public rqt::Object<QWidget>
     Q_DECLARE_TR_FUNCTIONS(Window)
 
 public:
+    static QMetaObject const &staticMetaObject;
     Window(QWidget *parent = nullptr);
 
 private:
@@ -44,6 +45,7 @@ private:
     QSpinBox *valueSpinBox;
     QBoxLayout *layout;
 };
+inline RQT_STATIC_META_OBJECT(Window);
 //! [0]
 
 #endif

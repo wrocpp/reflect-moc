@@ -5,7 +5,7 @@
 #define SLIDERSGROUP_H
 
 #include <QGroupBox>
-#include <reflect_moc/qt.hpp>
+#include <reflect_moc/qt/qt.hpp>
 
 QT_BEGIN_NAMESPACE
 class QDial;
@@ -19,6 +19,7 @@ class SlidersGroup : public rqt::Object<QGroupBox>
 {
 
 public:
+    static QMetaObject const &staticMetaObject;
     SlidersGroup(const QString &title, QWidget *parent = nullptr);
 
 public:
@@ -38,6 +39,7 @@ private:
     QDial *dial;
     QBoxLayout *slidersLayout;
 };
+inline RQT_STATIC_META_OBJECT(SlidersGroup);
 //! [0]
 
 #endif

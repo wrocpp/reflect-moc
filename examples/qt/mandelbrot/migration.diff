@@ -1,6 +1,6 @@
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
-@@ -7,6 +7,15 @@
+@@ -7,6 +7,16 @@
  find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets)
  
  qt_standard_project_setup()
@@ -10,6 +10,7 @@
 +set(CMAKE_AUTOMOC OFF)
 +set(CMAKE_CXX_STANDARD 26)
 +set(CMAKE_CXX_STANDARD_REQUIRED ON)
++set(CMAKE_CXX_EXTENSIONS OFF)
 +add_compile_definitions(QT_NO_KEYWORDS)
 +add_compile_options($<$<COMPILE_LANGUAGE:CXX>:-freflection>)
 +include_directories(${CMAKE_CURRENT_SOURCE_DIR}/../../../../include)
@@ -18,16 +19,18 @@
      main.cpp
 --- a/renderthread.cpp
 +++ b/renderthread.cpp
-@@ -13,7 +13,7 @@
+@@ -13,8 +13,9 @@
  
  //! [0]
  RenderThread::RenderThread(QObject *parent)
 -    : QThread(parent)
 +    : rqt::Object<QThread>(parent)
  {
++    bind();
      for (int i = 0; i < ColormapSize; ++i)
          colormap[i] = rgbFromWaveLength(380.0 + (i * 400.0 / ColormapSize));
-@@ -57,7 +57,7 @@
+ }
+@@ -57,7 +58,7 @@
  void RenderThread::run()
  {
      QElapsedTimer timer;
@@ -36,7 +39,7 @@
          mutex.lock();
          const double devicePixelRatio = this->devicePixelRatio;
          const QSize resultSize = this->resultSize * devicePixelRatio;
-@@ -137,7 +137,7 @@
+@@ -137,7 +138,7 @@
                          str << elapsed << "ms";
                      image.setText(infoKey(), message);
  
@@ -47,11 +50,11 @@
                  ++pass;
 --- a/renderthread.h
 +++ b/renderthread.h
-@@ -8,15 +8,15 @@
+@@ -8,17 +8,18 @@
  #include <QSize>
  #include <QThread>
  #include <QWaitCondition>
-+#include <reflect_moc/qt.hpp>
++#include <reflect_moc/qt/qt.hpp>
  
  QT_BEGIN_NAMESPACE
  class QImage;
@@ -64,8 +67,11 @@
 -    Q_OBJECT
  
  public:
++    static QMetaObject const &staticMetaObject;
      RenderThread(QObject *parent = nullptr);
-@@ -29,8 +29,8 @@
+     ~RenderThread();
+ 
+@@ -29,8 +30,8 @@
  
      static QString infoKey() { return QStringLiteral("info"); }
  
@@ -76,3 +82,11 @@
  
  protected:
      void run() override;
+@@ -52,6 +53,7 @@
+     static constexpr int ColormapSize = 512;
+     uint colormap[ColormapSize];
+ };
++inline RQT_STATIC_META_OBJECT(RenderThread);
+ //! [0]
+ 
+ #endif // RENDERTHREAD_H

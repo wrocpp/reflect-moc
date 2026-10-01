@@ -1,6 +1,6 @@
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
-@@ -6,6 +6,15 @@
+@@ -6,6 +6,16 @@
  
  find_package(Qt6 REQUIRED COMPONENTS Core Qml Quick)
  qt_standard_project_setup()
@@ -10,13 +10,14 @@
 +set(CMAKE_AUTOMOC OFF)
 +set(CMAKE_CXX_STANDARD 26)
 +set(CMAKE_CXX_STANDARD_REQUIRED ON)
++set(CMAKE_CXX_EXTENSIONS OFF)
 +add_compile_definitions(QT_NO_KEYWORDS)
 +add_compile_options($<$<COMPILE_LANGUAGE:CXX>:-freflection>)
 +include_directories(${CMAKE_CURRENT_SOURCE_DIR}/../../../../include)
  
  qt_policy(SET QTP0001 NEW)
  
-@@ -28,7 +37,7 @@
+@@ -28,7 +38,7 @@
  )
  
  qt_add_qml_module(valuesource
@@ -25,7 +26,7 @@
      QML_FILES Main.qml
      DEPENDENCIES
          QtQuick
-@@ -64,7 +73,7 @@
+@@ -64,7 +74,7 @@
      Qt6::Quick
  )
  qt_add_qml_module(valuesource_harness
@@ -110,11 +111,11 @@
  }
 --- a/birthdayparty.h
 +++ b/birthdayparty.h
-@@ -11,44 +11,38 @@
+@@ -11,44 +11,41 @@
  #include <QObject>
  #include <QQmlListProperty>
  #include <qqml.h>
-+#include <reflect_moc/qt.hpp>
++#include <reflect_moc/qt/qt.hpp>
  
 -class BirthdayPartyAttached : public QObject
 +class [[=rqt::classinfo{"QML.Element", "anonymous"}]] BirthdayPartyAttached : public rqt::Object<QObject>
@@ -124,10 +125,11 @@
      QML_ANONYMOUS
  public:
 -    using QObject::QObject;
-+    using rqt::Object<QObject>::Object;
++    static QMetaObject const &staticMetaObject;
++    template <class... Args> explicit BirthdayPartyAttached(Args &&...args) : rqt::Object<QObject>(std::forward<Args>(args)...) { bind(); }
  
 -    QDate rsvp() const;
-+    [[=rqt::property{.write = "setRsvp", .notify = "rsvpChanged", .final = true}]] QDate rsvp() const;
++    [[=rqt::property{.write = "setRsvp", .notify = "rsvpChanged"}]] QDate rsvp() const;
      void setRsvp(QDate);
  
 -signals:
@@ -138,6 +140,7 @@
  private:
      QDate m_rsvp;
  };
++inline RQT_STATIC_META_OBJECT(BirthdayPartyAttached);
  
 -class BirthdayParty : public QObject
 +class [[=rqt::classinfo{"DefaultProperty", "guests"}]] [[=rqt::classinfo{"QML.Element", "auto"}]] [[=rqt::classinfo{"QML.Attached", "BirthdayPartyAttached"}]] BirthdayParty : public rqt::Object<QObject>
@@ -151,22 +154,23 @@
      QML_ATTACHED(BirthdayPartyAttached)
  public:
 -    using QObject::QObject;
-+    using rqt::Object<QObject>::Object;
++    static QMetaObject const &staticMetaObject;
++    template <class... Args> explicit BirthdayParty(Args &&...args) : rqt::Object<QObject>(std::forward<Args>(args)...) { bind(); }
  
 -    Person *host() const;
-+    [[=rqt::property{.write = "setHost", .notify = "hostChanged", .final = true}]] Person *host() const;
++    [[=rqt::property{.write = "setHost", .notify = "hostChanged"}]] Person *host() const;
      void setHost(Person *);
  
 -    QString announcement() const;
-+    [[=rqt::property{.write = "setAnnouncement", .notify = "announcementChanged", .final = true}]] QString announcement() const;
++    [[=rqt::property{.write = "setAnnouncement", .notify = "announcementChanged"}]] QString announcement() const;
      void setAnnouncement(const QString &);
  
 -    QQmlListProperty<Person> guests();
-+    [[=rqt::property{.notify = "guestsChanged", .final = true}]] QQmlListProperty<Person> guests();
++    [[=rqt::property{.notify = "guestsChanged"}]] QQmlListProperty<Person> guests();
      void appendGuest(Person *);
      qsizetype guestCount() const;
      Person *guest(qsizetype) const;
-@@ -60,11 +54,11 @@
+@@ -60,11 +57,11 @@
  
      void startParty();
  
@@ -183,18 +187,27 @@
  
  private:
      static void appendGuest(QQmlListProperty<Person> *, Person *);
+@@ -78,5 +75,6 @@
+     QList<Person *> m_guests;
+     QString m_announcement;
+ };
++inline RQT_STATIC_META_OBJECT(BirthdayParty);
+ 
+ #endif // BIRTHDAYPARTY_H
 --- a/happybirthdaysong.cpp
 +++ b/happybirthdaysong.cpp
-@@ -5,7 +5,7 @@
+@@ -5,8 +5,9 @@
  
  #include <QTimer>
  
 -HappyBirthdaySong::HappyBirthdaySong(QObject *parent) : QObject(parent)
 +HappyBirthdaySong::HappyBirthdaySong(QObject *parent) : rqt::Object<QObject>(parent)
  {
++    bind();
      auto *timer = new QTimer(this);
      QObject::connect(timer, &QTimer::timeout, this, &HappyBirthdaySong::advance);
-@@ -26,7 +26,7 @@
+     timer->start(1000);
+@@ -26,7 +27,7 @@
  {
      if (m_name != name) {
          m_name = name;
@@ -205,26 +218,35 @@
      m_lyrics.clear();
 --- a/happybirthdaysong.h
 +++ b/happybirthdaysong.h
-@@ -8,26 +8,24 @@
+@@ -8,26 +8,33 @@
  #include <QQmlPropertyValueSource>
  #include <qqml.h>
  #include <QStringList>
-+#include <reflect_moc/qt.hpp>
++#include <reflect_moc/qt/qt.hpp>
  
 -class HappyBirthdaySong : public QObject, public QQmlPropertyValueSource
-+class [[=rqt::classinfo{"QML.Element", "auto"}]] [[=rqt::interface{^^QQmlPropertyValueSource}]] HappyBirthdaySong : public rqt::Object<QObject>, public QQmlPropertyValueSource
++class [[=rqt::classinfo{"QML.Element", "auto"}]] HappyBirthdaySong : public rqt::Object<QObject>, public QQmlPropertyValueSource
  {
 -    Q_OBJECT
 -    Q_INTERFACES(QQmlPropertyValueSource)
 -    Q_PROPERTY(QString name READ name WRITE setName NOTIFY nameChanged FINAL)
      QML_ELEMENT
  public:
++    static QMetaObject const &staticMetaObject;
++    void *qt_metacast(const char *name) override
++    {
++        if (void *found = rqt::Object<QObject>::qt_metacast(name))
++            return found;
++        if (!qstrcmp(name, qobject_interface_iid<QQmlPropertyValueSource *>()))
++            return static_cast<QQmlPropertyValueSource *>(this);
++        return nullptr;
++    }
      explicit HappyBirthdaySong(QObject *parent = nullptr);
  
      void setTarget(const QQmlProperty &) override;
  
 -    QString name() const;
-+    [[=rqt::property{.write = "setName", .notify = "nameChanged", .final = true}]] QString name() const;
++    [[=rqt::property{.write = "setName", .notify = "nameChanged"}]] QString name() const;
      void setName(const QString &);
  
 -signals:
@@ -239,6 +261,13 @@
  
  private:
      qsizetype m_line = -1;
+@@ -35,5 +42,6 @@
+     QQmlProperty m_target;
+     QString m_name;
+ };
++inline RQT_STATIC_META_OBJECT(HappyBirthdaySong);
+ 
+ #endif // HAPPYBIRTHDAYSONG_H
 --- a/harness.cpp
 +++ b/harness.cpp
 @@ -16,6 +16,7 @@
@@ -275,16 +304,18 @@
      component.loadFromModule("People", "Main");
 --- a/person.cpp
 +++ b/person.cpp
-@@ -3,7 +3,7 @@
+@@ -3,8 +3,9 @@
  
  #include "person.h"
  
 -Person::Person(QObject *parent) : QObject(parent)
 +Person::Person(QObject *parent) : rqt::Object<QObject>(parent)
  {
++    bind();
      m_shoe = new ShoeDescription(this);
  }
-@@ -17,7 +17,7 @@
+ 
+@@ -17,7 +18,7 @@
  {
      if (m_size != size) {
          m_size = size;
@@ -293,7 +324,7 @@
      }
  }
  
-@@ -30,7 +30,7 @@
+@@ -30,7 +31,7 @@
  {
      if (m_color != color) {
          m_color = color;
@@ -302,7 +333,7 @@
      }
  }
  
-@@ -43,7 +43,7 @@
+@@ -43,7 +44,7 @@
  {
      if (m_brand != brand) {
          m_brand = brand;
@@ -311,7 +342,7 @@
      }
  }
  
-@@ -56,7 +56,7 @@
+@@ -56,7 +57,7 @@
  {
      if (m_price != price) {
          m_price = price;
@@ -320,7 +351,7 @@
      }
  }
  
-@@ -75,7 +75,7 @@
+@@ -75,7 +76,7 @@
  {
      if (m_name != name) {
          m_name = name;
@@ -329,7 +360,7 @@
      }
  }
  
-@@ -91,6 +91,6 @@
+@@ -91,6 +92,6 @@
  
      if (*m_shoe != *shoe) {
          m_shoe = shoe;
@@ -339,11 +370,11 @@
  }
 --- a/person.h
 +++ b/person.h
-@@ -7,28 +7,24 @@
+@@ -7,28 +7,25 @@
  #include <QtQml/qqml.h>
  #include <QColor>
  #include <QObject>
-+#include <reflect_moc/qt.hpp>
++#include <reflect_moc/qt/qt.hpp>
  
 -class ShoeDescription : public QObject
 +class [[=rqt::classinfo{"QML.Element", "anonymous"}]] ShoeDescription : public rqt::Object<QObject>
@@ -356,26 +387,27 @@
      QML_ANONYMOUS
  public:
 -    using QObject::QObject;
-+    using rqt::Object<QObject>::Object;
++    static QMetaObject const &staticMetaObject;
++    template <class... Args> explicit ShoeDescription(Args &&...args) : rqt::Object<QObject>(std::forward<Args>(args)...) { bind(); }
  
 -    int size() const;
-+    [[=rqt::property{.write = "setSize", .notify = "shoeChanged", .final = true}]] int size() const;
++    [[=rqt::property{.write = "setSize", .notify = "shoeChanged"}]] int size() const;
      void setSize(int);
  
 -    QColor color() const;
-+    [[=rqt::property{.write = "setColor", .notify = "shoeChanged", .final = true}]] QColor color() const;
++    [[=rqt::property{.write = "setColor", .notify = "shoeChanged"}]] QColor color() const;
      void setColor(const QColor &);
  
 -    QString brand() const;
-+    [[=rqt::property{.write = "setBrand", .notify = "shoeChanged", .final = true}]] QString brand() const;
++    [[=rqt::property{.write = "setBrand", .notify = "shoeChanged"}]] QString brand() const;
      void setBrand(const QString &);
  
 -    qreal price() const;
-+    [[=rqt::property{.write = "setPrice", .notify = "shoeChanged", .final = true}]] qreal price() const;
++    [[=rqt::property{.write = "setPrice", .notify = "shoeChanged"}]] qreal price() const;
      void setPrice(qreal);
  
      friend bool operator==(const ShoeDescription &lhs, const ShoeDescription &rhs)
-@@ -40,8 +36,8 @@
+@@ -40,8 +37,8 @@
          return !operatorEqualsImpl(lhs, rhs);
      }
  
@@ -386,9 +418,11 @@
  
  private:
      static bool operatorEqualsImpl(const ShoeDescription &, const ShoeDescription &);
-@@ -52,47 +48,42 @@
+@@ -51,48 +48,50 @@
+     QString m_brand;
      qreal m_price = 0;
  };
++inline RQT_STATIC_META_OBJECT(ShoeDescription);
  
 -class Person : public QObject
 +class [[=rqt::classinfo{"QML.Element", "auto"}]] [[=rqt::classinfo{"QML.Creatable", "false"}]] [[=rqt::classinfo{"QML.UncreatableReason", "Person is an abstract base class."}]] Person : public rqt::Object<QObject>
@@ -400,16 +434,17 @@
      QML_UNCREATABLE("Person is an abstract base class.")
  public:
 -    using QObject::QObject;
++    static QMetaObject const &staticMetaObject;
 +    using rqt::Object<QObject>::Object;
  
      Person(QObject *parent = nullptr);
  
 -    QString name() const;
-+    [[=rqt::property{.write = "setName", .notify = "nameChanged", .final = true}]] QString name() const;
++    [[=rqt::property{.write = "setName", .notify = "nameChanged"}]] QString name() const;
      void setName(const QString &);
  
 -    ShoeDescription *shoe() const;
-+    [[=rqt::property{.write = "setShoe", .notify = "shoeChanged", .final = true}]] ShoeDescription *shoe() const;
++    [[=rqt::property{.write = "setShoe", .notify = "shoeChanged"}]] ShoeDescription *shoe() const;
      void setShoe(ShoeDescription *shoe);
  
 -signals:
@@ -423,6 +458,7 @@
      QString m_name;
      ShoeDescription *m_shoe = nullptr;
  };
++inline RQT_STATIC_META_OBJECT(Person);
  
 -class Boy : public Person
 +class [[=rqt::classinfo{"QML.Element", "auto"}]] Boy : public rqt::Object<Person>
@@ -431,8 +467,10 @@
      QML_ELEMENT
  public:
 -    using Person::Person;
-+    using rqt::Object<Person>::Object;
++    static QMetaObject const &staticMetaObject;
++    template <class... Args> explicit Boy(Args &&...args) : rqt::Object<Person>(std::forward<Args>(args)...) { bind(); }
  };
++inline RQT_STATIC_META_OBJECT(Boy);
  
 -class Girl : public Person
 +class [[=rqt::classinfo{"QML.Element", "auto"}]] Girl : public rqt::Object<Person>
@@ -441,8 +479,10 @@
      QML_ELEMENT
  public:
 -    using Person::Person;
-+    using rqt::Object<Person>::Object;
++    static QMetaObject const &staticMetaObject;
++    template <class... Args> explicit Girl(Args &&...args) : rqt::Object<Person>(std::forward<Args>(args)...) { bind(); }
  };
++inline RQT_STATIC_META_OBJECT(Girl);
  
  #endif // PERSON_H
 --- /dev/null
