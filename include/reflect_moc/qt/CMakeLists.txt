@@ -7,5 +7,7 @@ add_library(reflect_moc_qt INTERFACE)
 add_library(reflect_moc::qt ALIAS reflect_moc_qt)
 target_include_directories(reflect_moc_qt INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/../..)
 target_compile_features(reflect_moc_qt INTERFACE cxx_std_26)
-target_compile_options(reflect_moc_qt INTERFACE $<$<CXX_COMPILER_ID:GNU>:-freflection>)
+# -Wno-subobject-linkage: the closure type in rqt::signal's default template argument has internal
+# linkage, so GCC warns about every header class with a signal data member (see the README).
+target_compile_options(reflect_moc_qt INTERFACE $<$<CXX_COMPILER_ID:GNU>:-freflection;-Wno-subobject-linkage>)
 target_link_libraries(reflect_moc_qt INTERFACE Qt6::Core)

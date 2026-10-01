@@ -225,3 +225,35 @@ The type must be declared with `Q_DECLARE_METATYPE` or be a Qt-known type.
 - QML handlers must use `function(value) {...}`; injected parameters are deprecated.
 - `rqt::connect` takes member-function pointers only; functor slots need tier B.
 - clang-p2996 lacks `current_function` and `std::meta::exception`: GCC only.
+
+### Limits of the Qt-like syntax and data-member signals
+
+- **Signals as data members find their owner with pointer arithmetic**: `this` minus the member's
+  `std::meta::offset_of`. That is what Qt itself does for some internals, but the C++ standard
+  gives no guarantee for a class that is not standard-layout (every QObject class is not: it has
+  virtual functions). It works on GCC 16.2 on Linux aarch64 (tested); the layout of a class with
+  a vtable and one non-virtual base is stable, and the offset comes from the compiler
+  (`offset_of`), not from a guess. A class with a virtual base, or a signal member inside a
+  base of a virtual-inheritance diamond, is not supported.
+- **One byte per signal.** Each `rqt::signal` member is an empty class and takes a byte (plus
+  padding). `[[no_unique_address]]` on the member would give the members the same address and
+  break the offset rule, so do not use it on a signal.
+- **`&A::sig` is a pointer to a data member**, so `qOverload<...>(&A::sig)` does not apply;
+  `QObject::connect(a, &A::sig, ...)`, `QMetaMethod::fromSignal` and `QSignalSpy(a, &A::sig)` work.
+- **Overloaded signals are impossible as data members**: two members cannot share a name. A class
+  that overloads a signal keeps the function form, `[[=rqt::signal_function]]`, for those.
+- **`QtPrivate::FunctionPointer` is Qt's internal namespace.** The specialization in `signal.hpp`
+  follows its shape in Qt 6.10.3 (the version tested); other versions are not tested.
+- **The closure in `rqt::signal`'s default template argument** gives every member its own type. The
+  test `capability_data_signals_two_tus` compares the mangled type of a header class's signal member
+  in two translation units of one executable.
+- **Function-valued `DESIGNABLE`/`SCRIPTABLE`/`STORED`/`USER` and `BINDABLE`** in `RQT_PROPERTY`
+  stop the build with a message that they are not supported. `Q_GADGET`, `Q_NAMESPACE`,
+  `Q_INTERFACES`, and slots or signals that are only named in `slots:` or `signals:` sections are
+  not mapped by `reflect_moc/compat.hpp`: add `[[=rqt::slot]]`, write the signal as a member.
+- **`reflect_moc/compat.hpp` redefines `Q_OBJECT` and friends:** include it after every Qt header,
+  and `reflect_moc/compat_end.hpp` hands the macros back.
+- **A non-public function with default arguments has no cloned rows** (private slots).
+- **Interfaces:** `RQT_OBJECT`'s `qt_metacast` answers the interface id of every direct base that has
+  one (`Q_DECLARE_INTERFACE`), so `Q_INTERFACES(...)` needs no replacement (it expands to nothing
+  without moc, and stays valid). `Q_PLUGIN_METADATA` is not supported.

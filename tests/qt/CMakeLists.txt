@@ -30,6 +30,8 @@ set(RQT_QT_CAPABILITY_TESTS
   capability_static_metaobject_one_line
   capability_qt_like_syntax
   capability_data_member_signals
+  capability_compat_header_moc_syntax
+  capability_interface_bases
   limit_parameter_names_must_agree)
 
 # Each must fail to compile, with this text in the compiler's output.
@@ -87,6 +89,23 @@ set_target_properties(capability_static_metaobject_two_tus PROPERTIES AUTOMOC OF
 target_include_directories(capability_static_metaobject_two_tus PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 add_test(NAME capability_static_metaobject_two_tus COMMAND capability_static_metaobject_two_tus)
 set_tests_properties(capability_static_metaobject_two_tus PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen" LABELS qt)
+
+# The oracle: the only target that runs the real moc, on purpose, to compare its output with ours.
+add_executable(capability_differential_against_moc capability_differential_against_moc.cpp differential_moc.h)
+target_link_libraries(capability_differential_against_moc PRIVATE reflect_moc::qt Qt6::Core)
+set_target_properties(capability_differential_against_moc PROPERTIES AUTOMOC ON)
+target_include_directories(capability_differential_against_moc PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+add_test(NAME capability_differential_against_moc COMMAND capability_differential_against_moc)
+set_tests_properties(capability_differential_against_moc PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen" LABELS qt)
+
+# Data-member signals of a header class, two translation units.
+add_executable(capability_data_signals_two_tus
+  capability_data_signals_two_tus_a.cpp capability_data_signals_two_tus_b.cpp)
+target_link_libraries(capability_data_signals_two_tus PRIVATE ${RQT_QT_LIBS})
+set_target_properties(capability_data_signals_two_tus PROPERTIES AUTOMOC OFF AUTOUIC OFF AUTORCC OFF)
+target_include_directories(capability_data_signals_two_tus PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+add_test(NAME capability_data_signals_two_tus COMMAND capability_data_signals_two_tus)
+set_tests_properties(capability_data_signals_two_tus PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen" LABELS qt)
 
 foreach(name IN LISTS RQT_QT_COMPILE_FAIL_TESTS)
   add_library(${name} OBJECT EXCLUDE_FROM_ALL ${name}.cpp)
