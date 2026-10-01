@@ -5,6 +5,8 @@ option(REFLECT_MOC_TSAN "Build everything with ThreadSanitizer" OFF)
 option(REFLECT_MOC_BUILD_TESTS "Build the tests" ON)
 option(REFLECT_MOC_BUILD_EXAMPLES "Build the examples" ON)
 
+option(RQT_BUILD_QT "Build the Qt layer and its tests (needs Qt 6.10; on in the docker image)" OFF)
+
 find_package(Threads REQUIRED)
 
 # The standalone core: header-only, no Qt.
@@ -30,4 +32,12 @@ if(REFLECT_MOC_BUILD_TESTS)
 endif()
 if(REFLECT_MOC_BUILD_EXAMPLES)
   add_subdirectory(examples/core)
+endif()
+
+# The Qt layer. tests/qt is added only with tests on.
+if(RQT_BUILD_QT)
+  add_subdirectory(include/reflect_moc/qt)
+  if(REFLECT_MOC_BUILD_TESTS)
+    add_subdirectory(tests/qt)
+  endif()
 endif()
