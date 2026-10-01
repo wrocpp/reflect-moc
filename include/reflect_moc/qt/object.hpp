@@ -31,6 +31,19 @@ inline constexpr QMetaObject static_meta_object = {
     {detail::super_of<D>(), detail::meta_content<D>.staticData.stringdata, detail::meta_content<D>.staticData.data,
      &detail::static_metacall<D>, nullptr, detail::meta_content<D>.relocatingData.metaTypes, nullptr}};
 
+// The tier B opt-in as one line inside the class:
+//   static inline QMetaObject const& staticMetaObject = rqt::meta_of<Worker>();   (RQT_META_OBJECT(Worker);)
+// meta_of has a declared return type, so GCC instantiates its body at the end of
+// the translation unit, when T is complete; a variable template named in the
+// initializer instead would see the incomplete class.
+template <class T>
+QMetaObject const& meta_of();
+
+template <class T>
+QMetaObject const& meta_of() {
+  return static_meta_object<T>;
+}
+
 namespace detail {
 
 // rqt::Object<B> is transparent to Qt: a class deriving from it directly has B
@@ -212,6 +225,11 @@ struct HasQ_OBJECT_Macro<D> {
 };
 }  // namespace QtPrivate
 
-// Tier B, outside the class: inline QMetaObject const& T::staticMetaObject = rqt::static_meta_object<T>;
+// Tier B in one line, inside the class. Every class that wants qobject_cast and Qt's own connect
+// writes its own line, including a class derived from another reflected class.
+#define RQT_META_OBJECT(T) static inline QMetaObject const& staticMetaObject = ::rqt::meta_of<T>()
+
+// The older two-line form (deprecated), outside the class:
+//   inline QMetaObject const& T::staticMetaObject = rqt::static_meta_object<T>;
 // inline, so the class can live in a header included by several translation units.
 #define RQT_STATIC_META_OBJECT(T) inline QMetaObject const& T::staticMetaObject = ::rqt::static_meta_object<T>

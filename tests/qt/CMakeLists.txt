@@ -26,6 +26,8 @@ set(RQT_QT_CAPABILITY_TESTS
   capability_forwarding_constructor_and_templates
   capability_private_members
   capability_pointer_typed_property_and_signal_argument
+  capability_property_order_follows_explicit_index
+  capability_static_metaobject_one_line
   limit_parameter_names_must_agree)
 
 # Each must fail to compile, with this text in the compiler's output.
@@ -45,7 +47,10 @@ set(limit_register_qml_needs_tier_b_MESSAGE
   "rqt::register_qml: the class needs the tier B opt-in")
 set(limit_inline_static_meta_object_MESSAGE
   "neither complete class type nor namespace")
+set(limit_property_index_gap_MESSAGE
+  "has index 2 but the indexes must be 0, 1, 2")
 set(RQT_QT_COMPILE_FAIL_TESTS
+  limit_property_index_gap
   limit_rqt_connect_argument_mismatch
   limit_qobject_cast_needs_tier_b
   limit_pmf_connect_needs_tier_b
@@ -65,6 +70,15 @@ foreach(name IN LISTS RQT_QT_CAPABILITY_TESTS)
   add_test(NAME ${name} COMMAND ${name})
   set_tests_properties(${name} PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen" LABELS qt)
 endforeach()
+
+# One class in a header, two translation units, one executable.
+add_executable(capability_static_metaobject_two_tus
+  capability_static_metaobject_two_tus_a.cpp capability_static_metaobject_two_tus_b.cpp)
+target_link_libraries(capability_static_metaobject_two_tus PRIVATE ${RQT_QT_LIBS})
+set_target_properties(capability_static_metaobject_two_tus PROPERTIES AUTOMOC OFF AUTOUIC OFF AUTORCC OFF)
+target_include_directories(capability_static_metaobject_two_tus PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+add_test(NAME capability_static_metaobject_two_tus COMMAND capability_static_metaobject_two_tus)
+set_tests_properties(capability_static_metaobject_two_tus PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen" LABELS qt)
 
 foreach(name IN LISTS RQT_QT_COMPILE_FAIL_TESTS)
   add_library(${name} OBJECT EXCLUDE_FROM_ALL ${name}.cpp)

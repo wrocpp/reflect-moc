@@ -35,6 +35,10 @@ struct Worker : rqt::Object<QThread> {            // default base: QObject
 
 `rqt::Object<B>` is a mixin templated on the BASE class (not CRTP). `B` is any
 `QObject`-derived class: `QObject`, `QThread`, `QWidget`, `QAbstractListModel`.
+Use `rqt::Object<X>` only when `X` is NOT itself an rqt class. A class that derives from
+another rqt class writes `struct B : A`; repeating `rqt::Object<...>` in `B` adds
+`rqt::object_tag` a second time, which makes the base ambiguous and breaks
+`HasQ_OBJECT_Macro<B>`.
 Multi-level inheritance works (`struct B : A`, `A : rqt::Object<QObject>`);
 inherited slots, signals and properties are visible through Qt as usual.
 Class-level info goes on the class: `struct [[=rqt::classinfo{"key", "value"}]] Worker ...`.
@@ -82,6 +86,15 @@ the default (test: `capability_private_members`).
 | `.name` | `""` | the property name; empty means the name of the getter or data member |
 | `.final`, `.constant`, `.required`, `.user` | `false` | FINAL, CONSTANT, REQUIRED, USER |
 | `.designable`, `.scriptable`, `.stored` | `true` | DESIGNABLE, SCRIPTABLE, STORED |
+| `.index` | `-1` (unset) | explicit position in the property table (the LAST field) |
+
+Property order: moc orders properties by their `Q_PROPERTY` lines, reflect-moc by the
+position of the annotated getter or member. When they differ (a class declares its
+accessors in another order than its `Q_PROPERTY` lines) give every property of that
+class an `.index`. Indexed properties come first, in index order; the rest follow in
+declaration order. The indexes must be 0, 1, 2 ... without a gap or duplicate, or the
+build fails naming the class and property (tests:
+`capability_property_order_follows_explicit_index`, `limit_property_index_gap`).
 
 The name fields are `rqt::short_text` (inline text, at most
 63 characters) and take a string literal: `.write = "setValue"`. A
@@ -109,11 +122,29 @@ Each name is resolved to a member at compile time. A typo is a build error
 `QMetaProperty`, queued connections across `QThread`, QML context properties,
 `rqt::cast`, `rqt::connect`.
 
-**Tier B (two lines, optional).** In the class: `static QMetaObject const& staticMetaObject;`
-and outside it: `inline QMetaObject const& T::staticMetaObject = rqt::static_meta_object<T>;`
-(macro: `RQT_STATIC_META_OBJECT(T);`, which is `inline`, so a class in a header
-included by several translation units is fine). This makes stock `qobject_cast<T*>`,
+**Tier B (one line inside the class, optional).**
+
+```cpp
+static inline QMetaObject const& staticMetaObject = rqt::meta_of<Worker>();
+RQT_META_OBJECT(Worker);   // the same line as a macro
+```
+
+Every class that wants it writes its own line, including a class derived from another
+reflected class (a CRTP base cannot own the member: `Girl : Person` would silently inherit
+Person's). It is an inline variable, so a class in a header included by several translation
+units is one object (test: `capability_static_metaobject_two_tus`). `rqt::meta_of<T>()` has a
+declared return type, so GCC instantiates its body at the end of the translation unit, when
+`T` is complete; `static constexpr ... = variable_template<Self>` in the class fails with
+"not a complete class type", and deducing-this on a static member is rejected. A static
+initializer that reads `T::staticMetaObject` is fine in a translation unit that includes the
+class definition (inline variables are initialized in definition order within a TU).
+This makes stock `qobject_cast<T*>`,
 pointer-to-member and functor `QObject::connect`, and `qmlRegisterType<T>` work.
+
+The older two-line form still works but is deprecated: in the class
+`static QMetaObject const& staticMetaObject;` and after it
+`inline QMetaObject const& T::staticMetaObject = rqt::static_meta_object<T>;`
+(`RQT_STATIC_META_OBJECT(T);`).
 `QtPrivate::HasQ_OBJECT_Macro` is specialized only for classes that declare their
 own `staticMetaObject` (checked by reflection). A blanket specialization would let
 `qobject_cast<T*>` compile against the inherited `QObject::staticMetaObject` and
