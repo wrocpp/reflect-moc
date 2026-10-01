@@ -34,6 +34,20 @@ class Sensor : public QObject {
   names that QML handlers read (a function type has none).
 - Slots and invokables: `[[=rqt::slot]]`, `[[=rqt::invokable]]`.
 - The older body form is `[[=rqt::signal_function]] void f(int v) { rqt::activate{this}(v); }`.
+  Use it for an overloaded signal, which cannot be a data member.
+- `RQT_OBJECT` comes first in the class, before any `rqt::signal` (it declares a hidden anchor member
+  the signals depend on; see "Limits of the Qt-like syntax"). Data-member signals need `RQT_OBJECT`;
+  a mixin class `rqt::Object<B>` uses the function form.
+- Besides `RQT_PROPERTY`: `RQT_ENUM(E)`, `RQT_FLAG(Flags)` and `RQT_CLASSINFO("key", "value")`. A base with
+  a `Q_DECLARE_INTERFACE` id is answered by `qt_metacast` with no `Q_INTERFACES` line.
+- `#include <reflect_moc/compat.hpp>` after the Qt headers maps `Q_OBJECT`, `Q_PROPERTY`, `Q_INVOKABLE`,
+  `Q_ENUM`, `Q_FLAG` and `Q_CLASSINFO` to these, so a moc class compiles with its macros unchanged
+  (`reflect_moc/compat_end.hpp` hands them back). Slots and signals still need `[[=rqt::slot]]` and an
+  `rqt::signal` member; `Q_GADGET`, `Q_NAMESPACE`, `Q_PLUGIN_METADATA`, `QML_ELEMENT` are not mapped.
+- Qt classes, QML: a class with `RQT_OBJECT` is accepted by `qobject_cast`, pointer-to-member and functor
+  connect and `qmlRegisterType<T>`/`rqt::register_qml<T>` with no opt-in (`capability_qt_like_syntax`,
+  `capability_static_metaobject_one_line`). The meta-object equals the one moc generates for the same
+  class (`capability_differential_against_moc`).
 
 **Migration note.** The annotation `[[=rqt::signal]]` no longer exists: `rqt::signal` is now the class
 template of the data-member form. Write `[[=rqt::signal_function]]` for the body form, and
@@ -51,7 +65,7 @@ struct Worker : rqt::Object<QThread> {            // default base: QObject
   [[=rqt::property{.write = "setValue", .notify = "valueChanged", .reset = ""}]]
   int value() const;                               // on the GETTER: READ is implied
 
-  [[= rqt::signal_function]]    void valueChanged(int value) { rqt::emit{this}(value); }
+  [[= rqt::signal_function]]    void valueChanged(int value) { rqt::activate{this}(value); }
   [[=rqt::slot]]      void setValue(int);
   [[=rqt::invokable]] int  add(int);
 
@@ -95,7 +109,8 @@ the default (test: `capability_private_members`).
 
 | annotation | on | meaning |
 |---|---|---|
-| `rqt::signal` | member function | a signal; the body must call `rqt::emit{this}(args...)` |
+| `rqt::signal_function` | member function | a signal with a body that calls `rqt::activate{this}(args...)` |
+| `rqt::names("a, b")` | a signal data member | parameter names of an `rqt::signal<void(...)>` member |
 | `rqt::slot` | member function | a slot |
 | `rqt::invokable` | member function | `Q_INVOKABLE` |
 | `rqt::property{...}` | getter, or a data member | a `Q_PROPERTY` |
@@ -132,8 +147,8 @@ The name fields are `rqt::short_text` (inline text, at most
 On a data member the property is MEMBER-style: read and write go straight to the
 member. A `.notify` signal is emitted after a write through Qt.
 Each name is resolved to a member at compile time. A typo is a build error
-(`std::meta::exception`), and a `.notify` naming a function that is not an
-`rqt::signal` fails the build.
+(`std::meta::exception`), and a `.notify` naming something that is not a signal (a data member
+`rqt::signal` or a `[[=rqt::signal_function]]`) fails the build.
 
 ## Free functions
 
@@ -180,7 +195,8 @@ succeed for any QObject.
 
 ## Constructors
 
-Every class needs a constructor body that calls `bind()` (or the E2 mem-initializer).
+(Mixin classes only: a class with `RQT_OBJECT` needs no `bind()` and no special constructor.)
+Every mixin class needs a constructor body that calls `bind()`.
 Inherited constructors (`using Base::Base;`) do NOT run `bind()`. Write a forwarding
 constructor template instead; `bind()` works from it:
 
@@ -215,9 +231,9 @@ The type must be declared with `Q_DECLARE_METATYPE` or be a Qt-known type.
 
 ## Limits
 
-- The 1-line in-class `static constexpr QMetaObject const& staticMetaObject = ...`
-  fails because `T` is incomplete (`neither complete class type nor namespace`).
-  Use the two-line form.
+- A `static constexpr QMetaObject const& staticMetaObject = rqt::static_meta_object<T>;` in the class
+  fails because `T` is incomplete (`neither complete class type nor namespace`). Use
+  `static inline ... = rqt::meta_of<T>();` (`RQT_META_OBJECT(T)`), or `RQT_OBJECT`, which needs none of this.
 - Index-based `QMetaObject::connect` does not check argument types. Use `rqt::connect`.
 - Parameter names survive only while every declaration agrees (declaration `v`,
   definition `newValue` gives `has_identifier` false). Signals defined in the
@@ -252,9 +268,11 @@ The type must be declared with `Q_DECLARE_METATYPE` or be a Qt-known type.
 - **`QtPrivate::FunctionPointer` is Qt's internal namespace.** The specialization in `signal.hpp`
   follows its shape in Qt 6.10.3 (the version tested); other versions are not tested.
 - **Function-valued `DESIGNABLE`/`SCRIPTABLE`/`STORED`/`USER` and `BINDABLE`** in `RQT_PROPERTY`
-  stop the build with a message that they are not supported. `Q_GADGET`, `Q_NAMESPACE`,
-  `Q_INTERFACES`, and slots or signals that are only named in `slots:` or `signals:` sections are
-  not mapped by `reflect_moc/compat.hpp`: add `[[=rqt::slot]]`, write the signal as a member.
+  stop the build with a message that they are not supported. `Q_GADGET`, `Q_NAMESPACE`, and slots or
+  signals that are only named in `slots:` or `signals:` sections are not mapped by
+  `reflect_moc/compat.hpp`: add `[[=rqt::slot]]`, write the signal as a member.
+- **Tested on:** GCC 16.2.0, Qt 6.10.3, Linux aarch64 (docker), offscreen QPA. Not tested: x86_64, other
+  Qt versions, clang, MSVC. Measurements: `docs/measurements.md`.
 - **`reflect_moc/compat.hpp` redefines `Q_OBJECT` and friends:** include it after every Qt header,
   and `reflect_moc/compat_end.hpp` hands the macros back.
 - **A non-public function with default arguments has no cloned rows** (private slots).
