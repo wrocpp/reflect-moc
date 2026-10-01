@@ -1,0 +1,27 @@
+meta SlidersGroup : QGroupBox
+  public signal void valueChanged(int)(value)
+  public slot void setValue(int)(value)
+  public slot void setMinimum(int)(value)
+  public slot void setMaximum(int)(value)
+  public slot void invertAppearance(bool)(invert)
+  public slot void invertKeyBindings(bool)(invert)
+  public slot void setOrientation(Qt::Orientation)(orientation)
+meta Window : QWidget
+This plugin does not support propagateSizeHints()
+initial                      slider=5 scroll=5 dial=5 range=[0,20] spin=5 inverted=0 keys=0 vertical=1
+  valueChanged(12)
+spin value 12                slider=12 scroll=12 dial=12 range=[0,20] spin=12 inverted=0 keys=0 vertical=1
+  valueChanged(3)
+dial 3                       slider=3 scroll=3 dial=3 range=[0,20] spin=3 inverted=0 keys=0 vertical=1
+  valueChanged(5)
+minimum 5                    slider=5 scroll=5 dial=5 range=[5,20] spin=5 inverted=0 keys=0 vertical=1
+maximum 8                    slider=5 scroll=5 dial=5 range=[5,8] spin=5 inverted=0 keys=0 vertical=1
+both boxes checked           slider=5 scroll=5 dial=5 range=[5,8] spin=5 inverted=1 keys=1 vertical=1
+  valueChanged(7)
+invokeMethod setValue(7)     slider=7 scroll=7 dial=7 range=[5,8] spin=7 inverted=1 keys=1 vertical=1
+  valueChanged(6)
+string connect ok, mirror=6
+resized to portrait          slider=6 scroll=6 dial=6 range=[5,8] spin=6 inverted=1 keys=1 vertical=0
+This plugin does not support propagateSizeHints()
+resized to landscape         slider=6 scroll=6 dial=6 range=[5,8] spin=6 inverted=1 keys=1 vertical=1
+qobject_cast<SlidersGroup*> ok

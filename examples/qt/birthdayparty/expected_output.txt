@@ -1,0 +1,54 @@
+meta ShoeDescription : QObject
+  classinfo QML.Element = anonymous
+  public signal void shoeChanged()()
+  property int size read write final notify=shoeChanged()
+  property QColor color read write final notify=shoeChanged()
+  property QString brand read write final notify=shoeChanged()
+  property double price read write final notify=shoeChanged()
+meta Person : QObject
+  classinfo QML.Element = auto
+  classinfo QML.Creatable = false
+  classinfo QML.UncreatableReason = Person is an abstract base class.
+  public signal void nameChanged()()
+  public signal void shoeChanged()()
+  property QString name read write final notify=nameChanged()
+  property ShoeDescription* shoe read write final notify=shoeChanged()
+meta Boy : Person
+  classinfo QML.Element = auto
+meta Girl : Person
+  classinfo QML.Element = auto
+meta BirthdayPartyAttached : QObject
+  classinfo QML.Element = anonymous
+  public signal void rsvpChanged()()
+  property QDate rsvp read write final notify=rsvpChanged()
+meta BirthdayParty : QObject
+  classinfo DefaultProperty = guests
+  classinfo QML.Element = auto
+  classinfo QML.Attached = BirthdayPartyAttached
+  public signal void hostChanged()()
+  public signal void guestsChanged()()
+  public signal void partyStarted(QDateTime)(time)
+  public signal void announcementChanged()()
+  property Person* host read write final notify=hostChanged()
+  property QQmlListProperty<Person> guests read final notify=guestsChanged()
+  property QString announcement read write final notify=announcementChanged()
+meta HappyBirthdaySong : QObject
+  classinfo QML.Element = auto
+  public signal void nameChanged()()
+  private slot void advance()()
+  property QString name read write final notify=nameChanged()
+"Bob Jones" is having a birthday!
+He is inviting:
+    "Leo Hodges" RSVP date: "2023-03-01"
+    shoe: 10 "#000000" "Reebok" 59.95
+    "Jack Smith" RSVP date: Hasn't RSVP'd
+    shoe: 8 "#0000ff" "Puma" 19.95
+    "Anne Brown" RSVP date: "2023-03-03"
+    shoe: 7 "#ff0000" "Marc Jacobs" 99.99
+song for "Bob Jones"
+Happy birthday to you,
+Happy birthday to you,
+Happy birthday dear Bob Jones,
+Happy birthday to you!
+
+This party started rockin' at <time>

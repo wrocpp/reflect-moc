@@ -48,3 +48,25 @@ qt_generate_deploy_qml_app_script(
     DEPLOY_USER_QML_MODULES_ON_UNSUPPORTED_PLATFORM
 )
 install(SCRIPT ${deploy_script})
+
+# reflect-moc behaviour test (not upstream): the party driven headless, with
+# the song advanced by name instead of by its one-second timer.
+qt_add_executable(valuesource_harness
+    birthdayparty.cpp birthdayparty.h
+    happybirthdaysong.cpp happybirthdaysong.h
+    harness.cpp
+    person.cpp person.h
+)
+target_include_directories(valuesource_harness PRIVATE ../../common)
+target_link_libraries(valuesource_harness PRIVATE
+    Qt6::Core
+    Qt6::Qml
+    Qt6::Quick
+)
+qt_add_qml_module(valuesource_harness
+    URI People
+    QML_FILES Main.qml
+    OUTPUT_DIRECTORY harness/People
+    DEPENDENCIES
+        QtQuick
+)

@@ -1,0 +1,15 @@
+meta RenderThread : QThread
+  public signal void sendBlock(Block)(block)
+meta Window : QWidget
+  public slot void addBlock(Block)(block)
+  private slot void loadImage()()
+  private slot void resetUi()()
+This plugin does not support propagateSizeHints()
+initial                load=enabled stop=disabled
+run 1 started          load=disabled stop=enabled
+This plugin does not support propagateSizeHints()
+run 1 finished         load=enabled stop=disabled
+run 1: 400 blocks (expected 400), 0 off the GUI thread, 0 outside the image
+run 2 stopped          load=enabled stop=disabled
+run 2: stopped early yes, 0 off the GUI thread
+invokeMethod resetUi   load=enabled stop=disabled

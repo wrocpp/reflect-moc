@@ -38,3 +38,17 @@ qt_generate_deploy_app_script(
     NO_UNSUPPORTED_PLATFORM_ERROR
 )
 install(SCRIPT ${deploy_script})
+
+# reflect-moc behaviour test (not upstream): the window driven headless.
+qt_add_executable(queuedcustomtype_harness
+    block.cpp block.h
+    harness.cpp
+    renderthread.cpp renderthread.h
+    window.cpp window.h
+)
+target_include_directories(queuedcustomtype_harness PRIVATE ../../common)
+target_link_libraries(queuedcustomtype_harness PRIVATE
+    Qt6::Core
+    Qt6::Gui
+    Qt6::Widgets
+)

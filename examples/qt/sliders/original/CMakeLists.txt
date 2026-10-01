@@ -37,3 +37,16 @@ qt_generate_deploy_app_script(
     NO_UNSUPPORTED_PLATFORM_ERROR
 )
 install(SCRIPT ${deploy_script})
+
+# reflect-moc behaviour test (not upstream): the window driven headless.
+qt_add_executable(sliders_harness
+    harness.cpp
+    slidersgroup.cpp slidersgroup.h
+    window.cpp window.h
+)
+target_include_directories(sliders_harness PRIVATE ../../common)
+target_link_libraries(sliders_harness PRIVATE
+    Qt6::Core
+    Qt6::Gui
+    Qt6::Widgets
+)

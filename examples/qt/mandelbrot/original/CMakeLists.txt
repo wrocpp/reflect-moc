@@ -37,3 +37,14 @@ qt_generate_deploy_app_script(
     NO_UNSUPPORTED_PLATFORM_ERROR
 )
 install(SCRIPT ${deploy_script})
+
+# reflect-moc behaviour test (not upstream): the render thread driven headless.
+qt_add_executable(mandelbrot_harness
+    harness.cpp
+    renderthread.cpp renderthread.h
+)
+target_include_directories(mandelbrot_harness PRIVATE ../../common)
+target_link_libraries(mandelbrot_harness PRIVATE
+    Qt6::Core
+    Qt6::Gui
+)
