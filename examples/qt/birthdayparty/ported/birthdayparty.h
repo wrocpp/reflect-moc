@@ -39,13 +39,13 @@ public:
     static QMetaObject const &staticMetaObject;
     template <class... Args> requires rqt::forwardable<BirthdayParty, Args...> explicit BirthdayParty(Args &&...args) : rqt::Object<QObject>(std::forward<Args>(args)...) { bind(); }
 
-    [[=rqt::property{.write = "setHost", .notify = "hostChanged", .final = true}]] Person *host() const;
+    [[=rqt::property{.write = "setHost", .notify = "hostChanged", .final = true, .index = 0}]] Person *host() const;
     void setHost(Person *);
 
-    [[=rqt::property{.write = "setAnnouncement", .notify = "announcementChanged", .final = true}]] QString announcement() const;
+    [[=rqt::property{.write = "setAnnouncement", .notify = "announcementChanged", .final = true, .index = 2}]] QString announcement() const;
     void setAnnouncement(const QString &);
 
-    [[=rqt::property{.notify = "guestsChanged", .final = true}]] QQmlListProperty<Person> guests();
+    [[=rqt::property{.notify = "guestsChanged", .final = true, .index = 1}]] QQmlListProperty<Person> guests();
     void appendGuest(Person *);
     qsizetype guestCount() const;
     Person *guest(qsizetype) const;
