@@ -47,6 +47,7 @@ def _calls_tr(blanked: str, cls: str) -> bool:
 class Options:
     reflect_moc_include: str  # absolute, or relative to each CMakeLists.txt
     title: str = ""
+    style: str = syntax.ANNOTATIONS
 
 
 @dataclass
@@ -109,9 +110,10 @@ def migrate(src_root: str, provider: JsonProvider, options: Options, dst_root: s
     declared_only: list[tuple[str, str]] = []
     for rel, classes in per_file:
         src = sources[rel]
-        result = rewrite_classes(src, rel, classes, report, uses_tr, static_meta, object_names)
+        result = rewrite_classes(src, rel, classes, report, uses_tr, static_meta, object_names, options.style)
         if result.migrated_classes:
-            includes = [syntax.HEADER_INCLUDE]
+            qtlike = options.style == syntax.QTLIKE
+            includes = [syntax.COMPAT_INCLUDE if qtlike else syntax.HEADER_INCLUDE]
             if result.uses_tr_include:
                 includes.append(syntax.TR_INCLUDE)
             add_includes(src, result.first_class_line, includes)
@@ -123,7 +125,9 @@ def migrate(src_root: str, provider: JsonProvider, options: Options, dst_root: s
 
     bound: dict[str, int] = {}
     for rel, src in sources.items():
-        sweep(src, rel, report)
+        sweep(src, rel, report, options.style)
+        if options.style == syntax.QTLIKE:
+            continue
         rewrite_base_initializers(src, rel, bases, report)
         for cls, n in ctors.bind_out_of_line(src, rel, migrated, report).items():
             bound[cls] = bound.get(cls, 0) + n
@@ -152,7 +156,7 @@ def migrate(src_root: str, provider: JsonProvider, options: Options, dst_root: s
     for rel, src in cmake_sources.items():
         cmake_dir_abs = os.path.join(dst_root or src_root, os.path.dirname(rel))
         include, absolute = cmake.relative_include(options.reflect_moc_include, cmake_dir_abs)
-        cmake.rewrite(src, rel, include, absolute, qml_generated, report)
+        cmake.rewrite(src, rel, include, absolute, qml_generated, report, options.style)
 
     changed: dict[str, str] = {}
     for rel, src in list(sources.items()) + list(cmake_sources.items()):

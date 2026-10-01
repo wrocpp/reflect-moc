@@ -6,7 +6,7 @@ import argparse
 import os
 import sys
 
-from . import moc
+from . import moc, syntax
 from .tree import Options, migrate
 
 
@@ -28,6 +28,9 @@ def parse(argv: list[str]) -> argparse.Namespace:
                    help="an include dir for moc (Qt's own are added automatically)")
     p.add_argument("--reflect-moc-include", required=True,
                    help="reflect-moc's include dir; written relative to each CMakeLists.txt when possible")
+    p.add_argument("--style", choices=syntax.STYLES, default=syntax.ANNOTATIONS,
+                   help="annotations: the mixin base, annotations and bind() (default); qtlike: keep the Qt "
+                   "macros and class heads, include reflect_moc/compat.hpp, annotate only signals and slots")
     return p.parse_args(argv)
 
 
@@ -42,7 +45,8 @@ def main(argv: list[str] | None = None) -> int:
             return 2
         includes = args.includes + [os.path.abspath(args.source)] + moc.qt_include_dirs(moc_path)
         provider = moc.running(moc_path, includes, args.save_json)
-    options = Options(reflect_moc_include=os.path.abspath(args.reflect_moc_include), title=args.title)
+    options = Options(reflect_moc_include=os.path.abspath(args.reflect_moc_include), title=args.title,
+                      style=args.style)
     output = os.path.abspath(args.output) if args.output else None
     result = migrate(os.path.abspath(args.source), provider, options, output)
     if args.diff:

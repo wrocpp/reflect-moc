@@ -7,8 +7,18 @@ module spells reflect-moc C++ or CMake.
 
 from __future__ import annotations
 
+# Two target styles. `annotations` rewrites a class into the mixin shape the
+# rest of this module spells. `qtlike` leaves the class as Qt wrote it: the
+# Q_OBJECT family stays in the source and compat.hpp, included after the Qt
+# headers, redefines those macros to the reflect-moc versions; only each signal
+# and slot is rewritten.
+ANNOTATIONS = "annotations"
+QTLIKE = "qtlike"
+STYLES = (ANNOTATIONS, QTLIKE)
+
 # The header every migrated header includes.
 HEADER_INCLUDE = "#include <reflect_moc/qt/qt.hpp>"
+COMPAT_INCLUDE = "#include <reflect_moc/compat.hpp>"
 
 # Q_OBJECT also declared tr() with the class name as translation context. A
 # class whose own code calls tr() gets this instead, so its context is kept.
@@ -63,9 +73,10 @@ SLOT = "[[=rqt::slot]]"
 INVOKABLE = "[[=rqt::invokable]]"
 
 
-def signal_body(arg_names: list[str]) -> str:
-    """The one-line body of a migrated signal declaration."""
-    return "{ rqt::emit{this}(" + ", ".join(arg_names) + "); }"
+def signal_body(arg_names: list[str], style: str = ANNOTATIONS) -> str:
+    """The one-line body of a migrated signal declaration (rqt::emit, or rqt::activate in qtlike)."""
+    call = "rqt::activate" if style == QTLIKE else "rqt::emit"
+    return "{ " + call + "{this}(" + ", ".join(arg_names) + "); }"
 
 
 def enum(is_flag: bool) -> str:
@@ -173,6 +184,14 @@ add_compile_definitions(QT_NO_KEYWORDS)
 add_compile_options($<$<COMPILE_LANGUAGE:CXX>:-freflection>)
 include_directories({include_path})
 """
+
+
+# qtlike keeps Qt's keywords (signals, slots, emit): no QT_NO_KEYWORDS.
+CMAKE_BLOCK_QTLIKE = CMAKE_BLOCK.replace("add_compile_definitions(QT_NO_KEYWORDS)\n", "")
+
+
+def cmake_block(style: str) -> str:
+    return CMAKE_BLOCK_QTLIKE if style == QTLIKE else CMAKE_BLOCK
 
 
 def cmake_include_path(relative_or_absolute: str, is_absolute: bool) -> str:

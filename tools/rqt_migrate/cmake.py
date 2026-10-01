@@ -33,7 +33,7 @@ def _statement_end(src: Source, first: int) -> int:
 
 
 def rewrite(src: Source, rel: str, include_dir: str, include_is_absolute: bool, qml_types_generated: bool,
-            report: Report) -> None:
+            report: Report, style: str = syntax.ANNOTATIONS) -> None:
     anchor = -1
     for i, line in enumerate(src.lines):
         if _SETUP.match(line):
@@ -48,7 +48,7 @@ def rewrite(src: Source, rel: str, include_dir: str, include_is_absolute: bool, 
         report.manual(rel, 0, "CMake", "no find_package(Qt6) or qt_standard_project_setup(); "
                       "turn AUTOMOC off and add reflect-moc by hand")
         return
-    block = syntax.CMAKE_BLOCK.format(include_path=syntax.cmake_include_path(include_dir, include_is_absolute))
+    block = syntax.cmake_block(style).format(include_path=syntax.cmake_include_path(include_dir, include_is_absolute))
     src.insert_before(anchor + 1, "\n" + block.rstrip("\n"))
     report.auto(rel, anchor + 1, "CMake: AUTOMOC off, reflection flags, include dir")
 

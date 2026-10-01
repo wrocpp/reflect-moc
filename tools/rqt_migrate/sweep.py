@@ -19,13 +19,17 @@ _INCLUDE = re.compile(r"^\s*#\s*include\b")
 _GUARD = re.compile(r"^\s*(#\s*pragma\s+once|#\s*define\s+\w+\s*$)")
 
 
-def sweep(src: Source, rel: str, report: Report) -> None:
+def sweep(src: Source, rel: str, report: Report, style: str = syntax.ANNOTATIONS) -> None:
+    """moc includes are always dropped. emit, forever and foreach only need rewriting for
+    QT_NO_KEYWORDS, which qtlike does not require."""
     for i, blanked in enumerate(src.blank_lines):
         if i in src.deleted:
             continue
         if _MOC_INCLUDE.match(src.lines[i]):
             src.delete(i)
             report.auto(rel, i + 1, "moc include")
+            continue
+        if style == syntax.QTLIKE:
             continue
         text = src.lines[i].rstrip("\r\n")
         edits = []

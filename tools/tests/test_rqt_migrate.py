@@ -25,10 +25,10 @@ from rqt_migrate.tree import Options, migrate  # noqa: E402
 FIXTURES = os.path.join(TOOLS, "tests", "fixtures")
 
 
-def run_fixture(case: str):
+def run_fixture(case: str, style: str = syntax.ANNOTATIONS):
     root = os.path.join(FIXTURES, case)
     return migrate(os.path.join(root, "src"), moc.saved(os.path.join(root, "moc")),
-                   Options(reflect_moc_include="../include", title=case))
+                   Options(reflect_moc_include="../include", title=case, style=style))
 
 
 def read_dir(path: str) -> dict[str, str]:
@@ -283,6 +283,77 @@ class Qml(unittest.TestCase):
 
     def test_capability_qml_module_stops_generating_qmltypes(self):
         self.assertIn("    URI Demo NO_GENERATE_QMLTYPES", self.result.files["CMakeLists.txt"].splitlines())
+
+
+class Qtlike(unittest.TestCase):
+    """--style qtlike: the class stays as Qt wrote it; compat.hpp redefines the macros."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.result = run_fixture("rewrites", syntax.QTLIKE)
+        cls.header = cls.result.files["counter.h"]
+        cls.source = cls.result.files.get("counter.cpp", "")
+        cls.cmake = cls.result.files["CMakeLists.txt"]
+
+    def lines(self):
+        return self.header.splitlines()
+
+    def test_capability_compat_header_follows_the_last_include(self):
+        lines = self.lines()
+        self.assertEqual(lines[lines.index("#include <QString>") + 1], syntax.COMPAT_INCLUDE)
+        self.assertNotIn(syntax.HEADER_INCLUDE, self.header)
+
+    def test_capability_class_head_macros_and_sections_are_untouched(self):
+        for kept in ("    Q_OBJECT", "    Q_ENUM(Mode)", "    Q_PROPERTY(", "Q_CLASSINFO(", "signals:", "public slots:",
+                     "class Counter : public QObject", "    using QObject::QObject;"):
+            self.assertIn(kept, self.header)
+        self.assertNotIn("rqt::Object", self.header)
+        self.assertNotIn("bind()", self.header)
+        self.assertNotIn("staticMetaObject", self.header)
+        self.assertNotIn("rqt::property", self.header)
+        self.assertNotIn("rqt::enum_", self.header)
+
+    def test_capability_signal_gets_annotation_and_activate_body_in_its_section(self):
+        lines = self.lines()
+        at = lines.index("    [[=rqt::signal]] void valueChanged(int value) { rqt::activate{this}(value); }")
+        self.assertEqual(lines[at - 1], "signals:")
+        self.assertIn("    [[=rqt::signal]] void labelChanged(const QString & arg0) { rqt::activate{this}(arg0); }",
+                      lines)
+        self.assertNotIn("rqt::emit", self.header)
+
+    def test_capability_slot_gets_an_annotation_and_keeps_its_section(self):
+        self.assertIn("    [[=rqt::slot]] void tick();", self.lines())
+        self.assertIn("    [[=rqt::slot]] void clear();", self.lines())
+
+    def test_capability_q_invokable_is_left_to_the_macro(self):
+        self.assertIn("    Q_INVOKABLE int add(int n);", self.lines())
+        self.assertNotIn("rqt::invokable", self.header)
+
+    def test_capability_sources_keep_emit_forever_and_constructors(self):
+        # counter.cpp changes only by losing its moc include
+        self.assertNotIn("bind()", self.source)
+        self.assertNotIn("rqt::Object", self.source)
+        self.assertIn("Q_EMIT moved(", self.source)
+        self.assertIn("emit labelChanged(", self.source)
+        self.assertIn("    forever {", self.source.splitlines())
+        self.assertNotIn("moc_counter.cpp", self.source)
+
+    def test_capability_cmake_turns_automoc_off_without_the_keyword_define(self):
+        self.assertNotIn("AUTOMOC ON", self.cmake)
+        self.assertIn("add_compile_options($<$<COMPILE_LANGUAGE:CXX>:-freflection>)", self.cmake)
+        self.assertNotIn("QT_NO_KEYWORDS", self.cmake)
+
+    def test_capability_nothing_needs_manual_work(self):
+        self.assertEqual(self.result.report.of_status(MANUAL), [])
+
+    def test_capability_the_diff_is_smaller_than_the_annotation_style(self):
+        smaller = diff_stats(self.result.diff)
+        larger = diff_stats(run_fixture("rewrites").diff)
+        self.assertLess(smaller[1] + smaller[2], larger[1] + larger[2])
+
+    def test_capability_qml_registration_is_still_generated(self):
+        qml = run_fixture("qml", syntax.QTLIKE)
+        self.assertIn('qmlRegisterType<Plain>("Demo", 2, 1, "Plain");', qml.files[syntax.QML_HEADER])
 
 
 class Binding(unittest.TestCase):

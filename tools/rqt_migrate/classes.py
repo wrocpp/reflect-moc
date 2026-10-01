@@ -90,7 +90,8 @@ class FileResult:
 
 class ClassRewriter:
     def __init__(self, src: Source, rel: str, cls: dict, report: Report, uses_tr: bool, static_meta: str | None = None,
-                 object_names: set[str] | None = None):
+                 object_names: set[str] | None = None, style: str = syntax.ANNOTATIONS):
+        self.style = style
         self.src = src
         self.rel = rel
         self.cls = cls
@@ -166,6 +167,8 @@ class ClassRewriter:
                                "class templates cannot carry Q_OBJECT; port by hand")
             return False
         is_object = bool(self.cls.get("object"))
+        if self.style == syntax.QTLIKE:
+            return self._run_qtlike()
         if self.cls.get("gadget"):
             self.report.manual(self.rel, self.head_line + 1, "Q_GADGET",
                                f"`{self.name}`: reflect-moc has no gadget annotation; Q_GADGET needs moc")
@@ -197,6 +200,20 @@ class ClassRewriter:
             self._base()
         self._generated_members()
         self._class_annotations()
+        return True
+
+    def _run_qtlike(self) -> bool:
+        """qtlike: the class head, the macros, the sections and the constructors stay as Qt
+        wrote them (compat.hpp gives the macros their reflect-moc meaning). Each signal gets
+        its annotation and body; each slot gets its annotation."""
+        for sig in _dedupe(self.cls.get("signals", [])):
+            self._signal(sig)
+        for name, line in _overloads(self.cls.get("signals", [])):
+            self.report.partial(self.rel, line, "overloaded signal",
+                                f"`{name}` is overloaded: pointer-to-member connects need QOverload, "
+                                "and each overload must emit its own index")
+        for slot in _dedupe(self.cls.get("slots", [])):
+            self._annotate_method(slot, syntax.SLOT, "Q_SLOT", "slot")
         return True
 
     def _macros(self) -> None:
@@ -316,7 +333,7 @@ class ClassRewriter:
         prefix = re.sub(r"\bQ_SIGNAL\s+", "", real[len(indent) : m.start()])
         tail = real[semi + 1 :].rstrip("\r\n")
         new = (indent + syntax.SIGNAL + " " + prefix + real[m.start() : open_pos + 1] + params
-               + real[close:semi].rstrip() + " " + syntax.signal_body(names) + tail)
+               + real[close:semi].rstrip() + " " + syntax.signal_body(names, self.style) + tail)
         self.src.replace_span(first, semi_line, new)
         self.report.auto(self.rel, line + 1, "signal")
 
@@ -669,14 +686,15 @@ def _overloads(signals: list[dict]) -> list[tuple[str, int]]:
 
 
 def rewrite_classes(src: Source, rel: str, classes: list[dict], report: Report, uses_tr,
-                    static_meta: dict[str, str] | None = None, object_names: set[str] | None = None) -> FileResult:
+                    static_meta: dict[str, str] | None = None, object_names: set[str] | None = None,
+                    style: str = syntax.ANNOTATIONS) -> FileResult:
     """static_meta maps a class name to the reason it needs the tier B opt-in; object_names
     is every QObject class of the tree that is being migrated."""
     result = FileResult()
     static_meta = static_meta or {}
     for cls in classes:
         rewriter = ClassRewriter(src, rel, cls, report, uses_tr(cls["className"]), static_meta.get(cls["className"]),
-                                 object_names)
+                                 object_names, style)
         if rewriter.run():
             result.migrated_classes.append(cls["className"])
             if rewriter.ctor_declared_only:
