@@ -105,26 +105,26 @@ class Rewrites(unittest.TestCase):
 
     def test_capability_property_on_read_accessor_carries_write_notify_reset(self):
         self.assertLine(self.header,
-                        '    [[=rqt::property{.write = "setValue", .notify = "valueChanged", .reset = "reset"}]] '
+                        '    [[=rqt::property{.write = "setValue", .notify = "valueChanged", .reset = "reset", .index = 0}]] '
                         "int value() const { return m_value; }")
 
     def test_capability_property_named_unlike_its_accessor_carries_name_and_flags(self):
-        self.assertLine(self.header, '    [[=rqt::property{.name = "enabled", .constant = true}]] bool isEnabled() const;')
+        self.assertLine(self.header, '    [[=rqt::property{.name = "enabled", .constant = true, .index = 1}]] bool isEnabled() const;')
 
     def test_capability_property_text_is_written_as_string_literals(self):
         self.assertNotIn("define_static_string", self.header)
 
     def test_capability_property_fields_follow_the_library_order(self):
-        self.assertEqual(syntax.property({"final": True, "name": "n", "write": "w", "stored": False}),
-                         '[[=rqt::property{.write = "w", .name = "n", .final = true, .stored = false}]]')
+        self.assertEqual(syntax.property({"index": 2, "final": True, "name": "n", "write": "w", "stored": False}),
+                         '[[=rqt::property{.write = "w", .name = "n", .final = true, .stored = false, .index = 2}]]')
 
     def test_capability_multi_line_q_property_is_removed_whole(self):
         self.assertNotIn("Q_PROPERTY", self.header)
         self.assertNotIn("READ ratio", self.header)
-        self.assertLine(self.header, '    [[=rqt::property{.write = "setRatio"}]] double ratio() const;')
+        self.assertLine(self.header, '    [[=rqt::property{.write = "setRatio", .index = 3}]] double ratio() const;')
 
     def test_capability_member_property_annotates_the_data_member(self):
-        self.assertLine(self.header, '    [[=rqt::property{.notify = "labelChanged", .name = "label"}]] QString m_label;')
+        self.assertLine(self.header, '    [[=rqt::property{.notify = "labelChanged", .name = "label", .index = 2}]] QString m_label;')
 
     def test_capability_q_enum_annotates_the_enum(self):
         self.assertNotIn("Q_ENUM", self.header)
@@ -359,6 +359,14 @@ class Binding(unittest.TestCase):
     def test_capability_interface_metacast_answers_the_interface_after_the_base(self):
         body = self.body("Circle")
         self.assertLess(body.index("rqt::Object<QObject>::qt_metacast(name)"), body.index("qobject_interface_iid"))
+
+    def test_capability_property_order_differing_from_declaration_order_gets_indexes(self):
+        body = self.body("Ordered")
+        self.assertIn("[[=rqt::property{.constant = true, .index = 1}]] int first() const", body)
+        self.assertIn("[[=rqt::property{.constant = true, .index = 0}]] int second() const", body)
+
+    def test_capability_property_order_matching_declaration_order_gets_no_index(self):
+        self.assertNotIn(".index", self.body("Holder"))
 
     def test_capability_every_constructor_of_every_class_is_bound(self):
         self.assertEqual(self.result.report.of_status(MANUAL), [])

@@ -101,6 +101,17 @@ public:
     using QObject::QObject;
 };
 
+// Q_PROPERTY lines in one order, getters in another: moc keeps the lines' order.
+class Ordered : public QObject
+{
+    Q_OBJECT
+    Q_PROPERTY(int second READ second CONSTANT)
+    Q_PROPERTY(int first READ first CONSTANT)
+public:
+    int first() const { return 1; }
+    int second() const { return 2; }
+};
+
 class Quiet : public QObject
 {
     Q_OBJECT

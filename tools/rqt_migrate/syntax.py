@@ -85,7 +85,7 @@ PROPERTY_FLAG_FIELDS = {"final": False, "constant": False, "required": False, "u
                         "designable": True, "scriptable": True, "stored": True}
 
 
-def property(fields: dict[str, str | bool]) -> str:
+def property(fields: dict[str, str | bool | int]) -> str:
     """The annotation on a property's READ accessor or MEMBER data member.
 
     fields maps a field name to a string (written as a literal; the library stores
@@ -93,10 +93,15 @@ def property(fields: dict[str, str | bool]) -> str:
     differ from the default are passed; they are emitted in the library's order.
     """
     inner = []
-    for key in PROPERTY_NAME_FIELDS + tuple(PROPERTY_FLAG_FIELDS):
+    for key in PROPERTY_NAME_FIELDS + tuple(PROPERTY_FLAG_FIELDS) + ("index",):
         if key in fields:
             value = fields[key]
-            inner.append(f".{key} = " + (str(value).lower() if isinstance(value, bool) else f'"{value}"'))
+            if isinstance(value, bool):
+                inner.append(f".{key} = {str(value).lower()}")
+            elif isinstance(value, int):
+                inner.append(f".{key} = {value}")
+            else:
+                inner.append(f'.{key} = "{value}"')
     return f"[[=rqt::property{{{', '.join(inner)}}}]]"
 
 

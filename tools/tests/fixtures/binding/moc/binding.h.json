@@ -176,8 +176,50 @@
    ]
   },
   {
+   "className": "Ordered",
+   "lineNumber": 105,
+   "object": true,
+   "properties": [
+    {
+     "constant": true,
+     "designable": true,
+     "final": false,
+     "index": 0,
+     "lineNumber": 108,
+     "name": "second",
+     "read": "second",
+     "required": false,
+     "scriptable": true,
+     "stored": true,
+     "type": "int",
+     "user": false
+    },
+    {
+     "constant": true,
+     "designable": true,
+     "final": false,
+     "index": 1,
+     "lineNumber": 109,
+     "name": "first",
+     "read": "first",
+     "required": false,
+     "scriptable": true,
+     "stored": true,
+     "type": "int",
+     "user": false
+    }
+   ],
+   "qualifiedClassName": "Ordered",
+   "superClasses": [
+    {
+     "access": "public",
+     "name": "QObject"
+    }
+   ]
+  },
+  {
    "className": "Quiet",
-   "lineNumber": 104,
+   "lineNumber": 115,
    "object": true,
    "qualifiedClassName": "Quiet",
    "superClasses": [

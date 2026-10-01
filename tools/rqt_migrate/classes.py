@@ -102,6 +102,7 @@ class ClassRewriter:
         self.base: str | None = None  # the Qt base an rqt::Object<> replaced; None when none was inserted
         self.direct_base: str | None = None  # how the class now spells its direct base
         self.object_names = object_names or set()
+        self.property_index: dict[str, int] = {}  # set when Q_PROPERTY order differs from declaration order
         self.object_line: int | None = None  # where Q_OBJECT was: generated members go here
         self.interfaces: list[str] = []
         self.ctor_count = 0  # constructors declared in the class body
@@ -186,6 +187,7 @@ class ClassRewriter:
         for ctor in _dedupe(self.cls.get("constructors", [])):
             self.report.manual(self.rel, ctor.get("lineNumber", 0), "Q_INVOKABLE constructor",
                                "invokable constructors (QMetaObject::newInstance) are not supported")
+        self._property_order()
         for prop in self.cls.get("properties", []):
             self._property(prop)
         for enum in self.cls.get("enums", []):
@@ -402,23 +404,20 @@ class ClassRewriter:
             self.report.manual(self.rel, line, "Q_PRIVATE_PROPERTY", UNSUPPORTED["Q_PRIVATE_PROPERTY"])
             return
         unsupported = [k for k in ("bindable", "revision") if k in prop]
-        fields: dict[str, str | bool] = {}
+        fields: dict[str, str | bool | int] = {}
         read, member = prop.get("read"), prop.get("member")
-        if read:
-            target = self._find_member_declaration(rf"\b{re.escape(read)}\s*\(")
-            what = f"READ accessor `{read}`"
-        elif member:
-            target = self._find_member_declaration(rf"\b{re.escape(member)}\b\s*(=|;|\{{|\[|,)")
-            what = f"MEMBER `{member}`"
-        else:
+        if not (read or member):
             self.report.manual(self.rel, line, "Q_PROPERTY", f"`{name}` has neither READ nor MEMBER")
             return
+        target, what = self._property_target(prop)
         if target is None:
             self.report.manual(self.rel, line, "Q_PROPERTY",
                                f"`{name}`: the {what} is not declared in the class body")
             return
         if (read or member) != name:
             fields["name"] = name
+        if name in self.property_index:
+            fields["index"] = self.property_index[name]
         for key in ("write", "notify", "reset"):
             if prop.get(key):
                 fields[key] = prop[key]
@@ -435,6 +434,27 @@ class ClassRewriter:
                                 f"`{name}`: {', '.join(unsupported)} not carried by the annotation")
         else:
             self.report.auto(self.rel, line, "Q_PROPERTY")
+
+    def _property_target(self, prop: dict) -> tuple[int | None, str]:
+        """The line of the declaration the annotation goes on, and a name for it."""
+        read, member = prop.get("read"), prop.get("member")
+        if read:
+            return self._find_member_declaration(rf"\b{re.escape(read)}\s*\("), f"READ accessor `{read}`"
+        return (self._find_member_declaration(rf"\b{re.escape(member)}\b\s*(=|;|\{{|\[|,)"),
+                f"MEMBER `{member}`")
+
+    def _property_order(self) -> None:
+        """moc orders properties by their Q_PROPERTY lines, reflect-moc by the position of the
+        annotated declaration. When the two differ, every property of the class gets .index."""
+        placed = []
+        for prop in self.cls.get("properties", []):
+            if prop.get("privateClass") or not (prop.get("read") or prop.get("member")):
+                continue
+            target, _ = self._property_target(prop)
+            if target is not None:
+                placed.append((prop["name"], target))
+        if [t for _, t in placed] != sorted(t for _, t in placed):
+            self.property_index = {name: i for i, (name, _) in enumerate(placed)}
 
     def _find_member_declaration(self, pattern: str) -> int | None:
         rx = re.compile(pattern)
