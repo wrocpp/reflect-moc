@@ -1,0 +1,8 @@
+# The Qt image plus what a Qt Quick window needs to run and be viewed in a browser:
+# GL/EGL and font libraries for the software renderer, and noVNC to serve Qt's own
+# VNC platform plugin (QT_QPA_PLATFORM=vnc) as a web page.
+FROM reflect-moc/gcc16-qt610
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends libgl1 libegl1 libxkbcommon0 libfontconfig1 libfreetype6 \
+      libdbus-1-3 libglib2.0-0 fonts-dejavu-core novnc websockify procps \
+ && rm -rf /var/lib/apt/lists/*
