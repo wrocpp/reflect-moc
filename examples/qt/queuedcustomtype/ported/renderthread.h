@@ -30,7 +30,7 @@ protected:
 private:
     QImage m_image;
 };
-inline RQT_STATIC_META_OBJECT(RenderThread);
+RQT_STATIC_META_OBJECT(RenderThread);
 //! [RenderThread class definition]
 
 #endif

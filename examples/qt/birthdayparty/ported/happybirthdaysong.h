@@ -27,7 +27,7 @@ public:
 
     void setTarget(const QQmlProperty &) override;
 
-    [[=rqt::property{.write = "setName", .notify = "nameChanged"}]] QString name() const;
+    [[=rqt::property{.write = "setName", .notify = "nameChanged", .final = true}]] QString name() const;
     void setName(const QString &);
 
 public:
@@ -42,6 +42,6 @@ private:
     QQmlProperty m_target;
     QString m_name;
 };
-inline RQT_STATIC_META_OBJECT(HappyBirthdaySong);
+RQT_STATIC_META_OBJECT(HappyBirthdaySong);
 
 #endif // HAPPYBIRTHDAYSONG_H

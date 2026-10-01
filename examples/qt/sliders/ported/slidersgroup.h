@@ -39,7 +39,7 @@ private:
     QDial *dial;
     QBoxLayout *slidersLayout;
 };
-inline RQT_STATIC_META_OBJECT(SlidersGroup);
+RQT_STATIC_META_OBJECT(SlidersGroup);
 //! [0]
 
 #endif

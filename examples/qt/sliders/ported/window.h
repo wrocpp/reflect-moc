@@ -45,7 +45,7 @@ private:
     QSpinBox *valueSpinBox;
     QBoxLayout *layout;
 };
-inline RQT_STATIC_META_OBJECT(Window);
+RQT_STATIC_META_OBJECT(Window);
 //! [0]
 
 #endif

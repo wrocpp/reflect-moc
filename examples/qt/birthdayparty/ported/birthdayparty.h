@@ -18,9 +18,9 @@ class [[=rqt::classinfo{"QML.Element", "anonymous"}]] BirthdayPartyAttached : pu
     QML_ANONYMOUS
 public:
     static QMetaObject const &staticMetaObject;
-    template <class... Args> explicit BirthdayPartyAttached(Args &&...args) : rqt::Object<QObject>(std::forward<Args>(args)...) { bind(); }
+    template <class... Args> requires rqt::forwardable<BirthdayPartyAttached, Args...> explicit BirthdayPartyAttached(Args &&...args) : rqt::Object<QObject>(std::forward<Args>(args)...) { bind(); }
 
-    [[=rqt::property{.write = "setRsvp", .notify = "rsvpChanged"}]] QDate rsvp() const;
+    [[=rqt::property{.write = "setRsvp", .notify = "rsvpChanged", .final = true}]] QDate rsvp() const;
     void setRsvp(QDate);
 
 public:
@@ -29,7 +29,7 @@ public:
 private:
     QDate m_rsvp;
 };
-inline RQT_STATIC_META_OBJECT(BirthdayPartyAttached);
+RQT_STATIC_META_OBJECT(BirthdayPartyAttached);
 
 class [[=rqt::classinfo{"DefaultProperty", "guests"}]] [[=rqt::classinfo{"QML.Element", "auto"}]] [[=rqt::classinfo{"QML.Attached", "BirthdayPartyAttached"}]] BirthdayParty : public rqt::Object<QObject>
 {
@@ -37,15 +37,15 @@ class [[=rqt::classinfo{"DefaultProperty", "guests"}]] [[=rqt::classinfo{"QML.El
     QML_ATTACHED(BirthdayPartyAttached)
 public:
     static QMetaObject const &staticMetaObject;
-    template <class... Args> explicit BirthdayParty(Args &&...args) : rqt::Object<QObject>(std::forward<Args>(args)...) { bind(); }
+    template <class... Args> requires rqt::forwardable<BirthdayParty, Args...> explicit BirthdayParty(Args &&...args) : rqt::Object<QObject>(std::forward<Args>(args)...) { bind(); }
 
-    [[=rqt::property{.write = "setHost", .notify = "hostChanged"}]] Person *host() const;
+    [[=rqt::property{.write = "setHost", .notify = "hostChanged", .final = true}]] Person *host() const;
     void setHost(Person *);
 
-    [[=rqt::property{.write = "setAnnouncement", .notify = "announcementChanged"}]] QString announcement() const;
+    [[=rqt::property{.write = "setAnnouncement", .notify = "announcementChanged", .final = true}]] QString announcement() const;
     void setAnnouncement(const QString &);
 
-    [[=rqt::property{.notify = "guestsChanged"}]] QQmlListProperty<Person> guests();
+    [[=rqt::property{.notify = "guestsChanged", .final = true}]] QQmlListProperty<Person> guests();
     void appendGuest(Person *);
     qsizetype guestCount() const;
     Person *guest(qsizetype) const;
@@ -75,6 +75,6 @@ private:
     QList<Person *> m_guests;
     QString m_announcement;
 };
-inline RQT_STATIC_META_OBJECT(BirthdayParty);
+RQT_STATIC_META_OBJECT(BirthdayParty);
 
 #endif // BIRTHDAYPARTY_H

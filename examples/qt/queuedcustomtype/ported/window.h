@@ -40,7 +40,7 @@ private:
     QString path;
     RenderThread *thread;
 };
-inline RQT_STATIC_META_OBJECT(Window);
+RQT_STATIC_META_OBJECT(Window);
 //! [Window class definition]
 
 #endif

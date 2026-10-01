@@ -53,7 +53,7 @@ private:
     static constexpr int ColormapSize = 512;
     uint colormap[ColormapSize];
 };
-inline RQT_STATIC_META_OBJECT(RenderThread);
+RQT_STATIC_META_OBJECT(RenderThread);
 //! [0]
 
 #endif // RENDERTHREAD_H
