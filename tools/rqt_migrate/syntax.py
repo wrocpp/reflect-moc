@@ -68,9 +68,24 @@ def default_constructor(cls: str) -> str:
 STATIC_META_OBJECT_DECLARATION = "static QMetaObject const &staticMetaObject;"
 STATIC_META_OBJECT_DEFINITION = "RQT_STATIC_META_OBJECT({cls});"
 
-SIGNAL = "[[=rqt::signal]]"
+SIGNAL = "[[=rqt::signal_function]]"
 SLOT = "[[=rqt::slot]]"
 INVOKABLE = "[[=rqt::invokable]]"
+
+
+SIGNALS_MEMBERS = "members"
+SIGNALS_BODIES = "bodies"
+SIGNAL_MODES = (SIGNALS_MEMBERS, SIGNALS_BODIES)
+
+
+def signal_member(types: list[str], name: str) -> str:
+    """qtlike signal as a bodyless data member: `rqt::signal<void(int, QString)> name;`."""
+    return f"rqt::signal<void({', '.join(types)})> {name};"
+
+
+def signal_names(names: list[str]) -> str:
+    """The annotation that keeps parameter names for QML handlers; unnamed ones are empty strings."""
+    return "[[=rqt::names(" + ", ".join(f'"{n}"' for n in names) + ")]]"
 
 
 def signal_body(arg_names: list[str], style: str = ANNOTATIONS) -> str:

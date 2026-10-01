@@ -48,6 +48,7 @@ class Options:
     reflect_moc_include: str  # absolute, or relative to each CMakeLists.txt
     title: str = ""
     style: str = syntax.ANNOTATIONS
+    signals: str = syntax.SIGNALS_MEMBERS  # qtlike only: data members, or functions with bodies
 
 
 @dataclass
@@ -110,7 +111,8 @@ def migrate(src_root: str, provider: JsonProvider, options: Options, dst_root: s
     declared_only: list[tuple[str, str]] = []
     for rel, classes in per_file:
         src = sources[rel]
-        result = rewrite_classes(src, rel, classes, report, uses_tr, static_meta, object_names, options.style)
+        result = rewrite_classes(src, rel, classes, report, uses_tr, static_meta, object_names, options.style,
+                                 options.signals)
         if result.migrated_classes:
             qtlike = options.style == syntax.QTLIKE
             includes = [syntax.COMPAT_INCLUDE if qtlike else syntax.HEADER_INCLUDE]

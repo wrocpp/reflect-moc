@@ -31,6 +31,9 @@ def parse(argv: list[str]) -> argparse.Namespace:
     p.add_argument("--style", choices=syntax.STYLES, default=syntax.ANNOTATIONS,
                    help="annotations: the mixin base, annotations and bind() (default); qtlike: keep the Qt "
                    "macros and class heads, include reflect_moc/compat.hpp, annotate only signals and slots")
+    p.add_argument("--signals", choices=syntax.SIGNAL_MODES, default=syntax.SIGNALS_MEMBERS,
+                   help="qtlike only. members: each signal becomes `rqt::signal<void(int)> name;` (default); "
+                   "bodies: a function annotated [[=rqt::signal]] with an rqt::activate body")
     return p.parse_args(argv)
 
 
@@ -46,7 +49,7 @@ def main(argv: list[str] | None = None) -> int:
         includes = args.includes + [os.path.abspath(args.source)] + moc.qt_include_dirs(moc_path)
         provider = moc.running(moc_path, includes, args.save_json)
     options = Options(reflect_moc_include=os.path.abspath(args.reflect_moc_include), title=args.title,
-                      style=args.style)
+                      style=args.style, signals=args.signals)
     output = os.path.abspath(args.output) if args.output else None
     result = migrate(os.path.abspath(args.source), provider, options, output)
     if args.diff:

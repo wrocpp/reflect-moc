@@ -25,10 +25,10 @@ from rqt_migrate.tree import Options, migrate  # noqa: E402
 FIXTURES = os.path.join(TOOLS, "tests", "fixtures")
 
 
-def run_fixture(case: str, style: str = syntax.ANNOTATIONS):
+def run_fixture(case: str, style: str = syntax.ANNOTATIONS, signals: str = syntax.SIGNALS_MEMBERS):
     root = os.path.join(FIXTURES, case)
     return migrate(os.path.join(root, "src"), moc.saved(os.path.join(root, "moc")),
-                   Options(reflect_moc_include="../include", title=case, style=style))
+                   Options(reflect_moc_include="../include", title=case, style=style, signals=signals))
 
 
 def read_dir(path: str) -> dict[str, str]:
@@ -74,19 +74,19 @@ class Rewrites(unittest.TestCase):
 
     def test_capability_signal_gets_annotation_and_emit_body(self):
         self.assertLine(self.header,
-                        "    [[=rqt::signal]] void valueChanged(int value) { rqt::emit{this}(value); }")
+                        "    [[=rqt::signal_function]] void valueChanged(int value) { rqt::emit{this}(value); }")
 
     def test_capability_unnamed_signal_parameter_is_named(self):
         self.assertLine(self.header,
-                        "    [[=rqt::signal]] void labelChanged(const QString & arg0) { rqt::emit{this}(arg0); }")
+                        "    [[=rqt::signal_function]] void labelChanged(const QString & arg0) { rqt::emit{this}(arg0); }")
 
     def test_capability_multi_line_signal_keeps_its_line_break(self):
-        self.assertIn("    [[=rqt::signal]] void moved(int from,\n               int to) { rqt::emit{this}(from, to); }",
+        self.assertIn("    [[=rqt::signal_function]] void moved(int from,\n               int to) { rqt::emit{this}(from, to); }",
                       self.header)
 
     def test_capability_signals_section_becomes_public_in_place(self):
         lines = self.header.splitlines()
-        at = lines.index("    [[=rqt::signal]] void valueChanged(int value) { rqt::emit{this}(value); }")
+        at = lines.index("    [[=rqt::signal_function]] void valueChanged(int value) { rqt::emit{this}(value); }")
         self.assertEqual(lines[at - 1], "public:")
         self.assertNotIn("signals:", self.header)
 
@@ -313,13 +313,39 @@ class Qtlike(unittest.TestCase):
         self.assertNotIn("rqt::property", self.header)
         self.assertNotIn("rqt::enum_", self.header)
 
-    def test_capability_signal_gets_annotation_and_activate_body_in_its_section(self):
+    def test_capability_signal_becomes_a_bodyless_data_member_in_its_section(self):
         lines = self.lines()
-        at = lines.index("    [[=rqt::signal]] void valueChanged(int value) { rqt::activate{this}(value); }")
+        at = lines.index('    [[=rqt::names("value")]] rqt::signal<void(int)> valueChanged;')
         self.assertEqual(lines[at - 1], "signals:")
-        self.assertIn("    [[=rqt::signal]] void labelChanged(const QString & arg0) { rqt::activate{this}(arg0); }",
-                      lines)
         self.assertNotIn("rqt::emit", self.header)
+        self.assertNotIn("rqt::activate", self.header)
+
+    def test_capability_signal_without_parameter_names_has_no_names_annotation(self):
+        self.assertIn("    rqt::signal<void(const QString &)> labelChanged;", self.lines())
+
+    def test_capability_signal_parameter_types_keep_const_and_reference_unlike_moc_json(self):
+        # moc's JSON writes "QString" for `const QString &`; the source's spelling is kept.
+        self.assertNotIn("rqt::signal<void(QString)>", self.header)
+
+    def test_capability_multi_line_signal_becomes_one_declaration(self):
+        self.assertIn('    [[=rqt::names("from", "to")]] rqt::signal<void(int, int)> moved;', self.lines())
+
+    def test_limit_bodies_mode_keeps_the_function_with_an_activate_body(self):
+        header = run_fixture("rewrites", syntax.QTLIKE, syntax.SIGNALS_BODIES).files["counter.h"]
+        self.assertIn("    [[=rqt::signal_function]] void valueChanged(int value) { rqt::activate{this}(value); }",
+                      header.splitlines())
+        self.assertNotIn("rqt::signal<", header)
+
+    def test_limit_overloaded_signals_and_default_arguments_are_reported_with_file_and_line(self):
+        result = run_fixture("reports", syntax.QTLIKE)
+        overloaded = [(i.path, i.line) for i in items(result, "overloaded signal", MANUAL)]
+        self.assertEqual(overloaded, [("signals.h", 16), ("signals.h", 17)])
+        self.assertEqual([(i.path, i.line) for i in items(result, "signal with default arguments", MANUAL)],
+                         [("signals.h", 15)])
+        header = result.files["signals.h"]
+        self.assertIn("    void changed(int);", header.splitlines())
+        self.assertIn("    void progress(int percent, const QString &text = QString());", header.splitlines())
+        self.assertNotIn("rqt::signal", header)
 
     def test_capability_slot_gets_an_annotation_and_keeps_its_section(self):
         self.assertIn("    [[=rqt::slot]] void tick();", self.lines())

@@ -90,8 +90,10 @@ class FileResult:
 
 class ClassRewriter:
     def __init__(self, src: Source, rel: str, cls: dict, report: Report, uses_tr: bool, static_meta: str | None = None,
-                 object_names: set[str] | None = None, style: str = syntax.ANNOTATIONS):
+                 object_names: set[str] | None = None, style: str = syntax.ANNOTATIONS,
+                 signals_mode: str = syntax.SIGNALS_MEMBERS):
         self.style = style
+        self.signals_mode = signals_mode
         self.src = src
         self.rel = rel
         self.cls = cls
@@ -206,12 +208,27 @@ class ClassRewriter:
         """qtlike: the class head, the macros, the sections and the constructors stay as Qt
         wrote them (compat.hpp gives the macros their reflect-moc meaning). Each signal gets
         its annotation and body; each slot gets its annotation."""
+        for prop in self.cls.get("properties", []):
+            unsupported = [k for k in ("bindable", *syntax.PROPERTY_FLAG_FIELDS)
+                           if k in prop and (k == "bindable" or not isinstance(prop[k], bool))]
+            if unsupported:
+                self.report.manual(self.rel, prop.get("lineNumber", 0), "Q_PROPERTY",
+                                   f"`{prop['name']}` uses {', '.join(k.upper() for k in unsupported)}; "
+                                   "RQT_PROPERTY cannot express it (a function-valued flag or BINDABLE)")
+        members = self.signals_mode == syntax.SIGNALS_MEMBERS
+        overloaded = {name for name, _ in _overloads(self.cls.get("signals", []))} if members else set()
         for sig in _dedupe(self.cls.get("signals", [])):
+            if sig["name"] in overloaded:
+                self.report.manual(self.rel, sig.get("lineNumber", 0), "overloaded signal",
+                                   f"`{sig['name']}` is overloaded; a data member cannot share a name, "
+                                   "left as it was")
+                continue
             self._signal(sig)
-        for name, line in _overloads(self.cls.get("signals", [])):
-            self.report.partial(self.rel, line, "overloaded signal",
-                                f"`{name}` is overloaded: pointer-to-member connects need QOverload, "
-                                "and each overload must emit its own index")
+        if not members:
+            for name, line in _overloads(self.cls.get("signals", [])):
+                self.report.partial(self.rel, line, "overloaded signal",
+                                    f"`{name}` is overloaded: pointer-to-member connects need QOverload, "
+                                    "and each overload must emit its own index")
         for slot in _dedupe(self.cls.get("slots", [])):
             self._annotate_method(slot, syntax.SLOT, "Q_SLOT", "slot")
         return True
@@ -326,6 +343,10 @@ class ClassRewriter:
                                f"`{name}` is declared `{between}`; only plain signals are migrated")
             return
         params, names, has_default = self._signal_params(real, blanked, open_pos, close, sig.get("arguments", []))
+        if self.style == syntax.QTLIKE and self.signals_mode == syntax.SIGNALS_MEMBERS:
+            types = self._signal_types(real, blanked, open_pos, close, sig.get("arguments", []))
+            self._signal_member(sig, first, semi_line, real, m.start(), semi, has_default, types)
+            return
         if has_default:
             self.report.partial(self.rel, line + 1, "signal with default arguments",
                                 f"`{name}`: moc also registers the shorter overloads; string connects to them fail")
@@ -336,6 +357,46 @@ class ClassRewriter:
                + real[close:semi].rstrip() + " " + syntax.signal_body(names, self.style) + tail)
         self.src.replace_span(first, semi_line, new)
         self.report.auto(self.rel, line + 1, "signal")
+
+    @staticmethod
+    def _signal_types(real: str, blanked: str, open_pos: int, close: int, arguments: list[dict]) -> list[str]:
+        """Each parameter's type as written (`const QString &`): moc's JSON drops const and &.
+        The default argument and the parameter's name are cut off."""
+        if blanked[open_pos + 1 : close].strip() in ("", "void"):
+            return []
+        types = []
+        for index, (a, b) in enumerate(split_top_level(blanked, open_pos + 1, close)):
+            eq = has_top_level(blanked, a, b, "=")
+            text = " ".join(real[a : eq if eq >= 0 else b].split())
+            arg_name = arguments[index].get("name", "") if index < len(arguments) else ""
+            if arg_name:
+                text = re.sub(rf"\s*\b{re.escape(arg_name)}$", "", text)
+            types.append(text)
+        return types
+
+    def _signal_member(self, sig: dict, first: int, semi_line: int, real: str, name_at: int, semi: int,
+                       has_default: bool, types: list[str]) -> None:
+        """`void f(int value);` becomes the data member `rqt::signal<void(int)> f;`, with the
+        parameter names in an annotation."""
+        name = sig["name"]
+        line = sig["lineNumber"]
+        if has_default:
+            self.report.manual(self.rel, line, "signal with default arguments",
+                               f"`{name}` has default arguments, which a data member cannot carry; "
+                               "left as it was")
+            return
+        indent = indent_of(real)
+        prefix = re.sub(r"\bQ_SIGNAL\s+", "", real[len(indent) : name_at]).strip()
+        if prefix != "void":
+            self.report.manual(self.rel, line, "signal", f"`{name}` is declared `{prefix} {name}(...)`; "
+                               "only `void` signals are migrated")
+            return
+        arguments = sig.get("arguments", [])
+        names = [a.get("name", "") for a in arguments]
+        annotation = syntax.signal_names(names) + " " if any(names) else ""
+        tail = real[semi + 1 :].rstrip("\r\n")
+        self.src.replace_span(first, semi_line, indent + annotation + syntax.signal_member(types, name) + tail)
+        self.report.auto(self.rel, line, "signal")
 
     def _signal_params(self, real: str, blanked: str, open_pos: int, close: int,
                        arguments: list[dict]) -> tuple[str, list[str], bool]:
@@ -687,14 +748,14 @@ def _overloads(signals: list[dict]) -> list[tuple[str, int]]:
 
 def rewrite_classes(src: Source, rel: str, classes: list[dict], report: Report, uses_tr,
                     static_meta: dict[str, str] | None = None, object_names: set[str] | None = None,
-                    style: str = syntax.ANNOTATIONS) -> FileResult:
+                    style: str = syntax.ANNOTATIONS, signals_mode: str = syntax.SIGNALS_MEMBERS) -> FileResult:
     """static_meta maps a class name to the reason it needs the tier B opt-in; object_names
     is every QObject class of the tree that is being migrated."""
     result = FileResult()
     static_meta = static_meta or {}
     for cls in classes:
         rewriter = ClassRewriter(src, rel, cls, report, uses_tr(cls["className"]), static_meta.get(cls["className"]),
-                                 object_names, style)
+                                 object_names, style, signals_mode)
         if rewriter.run():
             result.migrated_classes.append(cls["className"])
             if rewriter.ctor_declared_only:
