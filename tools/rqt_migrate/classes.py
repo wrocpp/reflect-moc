@@ -91,8 +91,10 @@ class FileResult:
 class ClassRewriter:
     def __init__(self, src: Source, rel: str, cls: dict, report: Report, uses_tr: bool, static_meta: str | None = None,
                  object_names: set[str] | None = None, style: str = syntax.ANNOTATIONS,
-                 signals_mode: str = syntax.SIGNALS_MEMBERS):
+                 signals_mode: str = syntax.SIGNALS_MEMBERS, macros: str = syntax.MACROS_RQT):
         self.style = style
+        # qtlike with the library's own macros: RQT_OBJECT, RQT_PROPERTY, annotations for the rest
+        self.rqt_macros = style == syntax.QTLIKE and macros == syntax.MACROS_RQT
         self.signals_mode = signals_mode
         self.src = src
         self.rel = rel
@@ -231,6 +233,17 @@ class ClassRewriter:
                                     "and each overload must emit its own index")
         for slot in _dedupe(self.cls.get("slots", [])):
             self._annotate_method(slot, syntax.SLOT, "Q_SLOT", "slot")
+        if self.rqt_macros:
+            self._macros()
+            for method in _dedupe(self.cls.get("methods", [])):
+                self._annotate_method(method, syntax.INVOKABLE, "Q_INVOKABLE", "Q_INVOKABLE")
+            for ctor in _dedupe(self.cls.get("constructors", [])):
+                self.report.manual(self.rel, ctor.get("lineNumber", 0), "Q_INVOKABLE constructor",
+                                   "invokable constructors (QMetaObject::newInstance) are not supported")
+            for enum in self.cls.get("enums", []):
+                self._enum(enum)
+            self._class_info()
+            self._class_annotations()
         return True
 
     def _macros(self) -> None:
@@ -242,7 +255,15 @@ class ClassRewriter:
                 continue
             macro = m.group(1)
             end = self._macro_end(i, m.end())
-            if macro == "Q_OBJECT":
+            if self.rqt_macros and macro in ("Q_OBJECT", "Q_PROPERTY"):
+                text = self.src.lines[i].rstrip("\r\n")
+                self.src.replace(i, text.replace(macro, "RQT_" + macro[2:], 1))
+                self.report.auto(self.rel, i + 1, macro, f"RQT_{macro[2:]}")
+            elif self.rqt_macros and macro == "Q_INTERFACES":
+                # Q_INTERFACES expands to nothing without moc; RQT_OBJECT's qt_metacast answers the
+                # interface bases itself, so the line stays.
+                self.report.auto(self.rel, i + 1, macro, "left in place; RQT_OBJECT answers the interface IIDs")
+            elif macro == "Q_OBJECT":
                 self.object_line = i
                 if self.uses_tr:
                     self.src.replace(i, indent_of(self.src.lines[i]) + syntax.TR_FUNCTIONS.format(cls=self.name))
@@ -748,21 +769,22 @@ def _overloads(signals: list[dict]) -> list[tuple[str, int]]:
 
 def rewrite_classes(src: Source, rel: str, classes: list[dict], report: Report, uses_tr,
                     static_meta: dict[str, str] | None = None, object_names: set[str] | None = None,
-                    style: str = syntax.ANNOTATIONS, signals_mode: str = syntax.SIGNALS_MEMBERS) -> FileResult:
+                    style: str = syntax.ANNOTATIONS, signals_mode: str = syntax.SIGNALS_MEMBERS,
+                    macros: str = syntax.MACROS_RQT) -> FileResult:
     """static_meta maps a class name to the reason it needs the tier B opt-in; object_names
     is every QObject class of the tree that is being migrated."""
     result = FileResult()
     static_meta = static_meta or {}
     for cls in classes:
         rewriter = ClassRewriter(src, rel, cls, report, uses_tr(cls["className"]), static_meta.get(cls["className"]),
-                                 object_names, style, signals_mode)
+                                 object_names, style, signals_mode, macros)
         if rewriter.run():
             result.migrated_classes.append(cls["className"])
             if rewriter.ctor_declared_only:
                 result.out_of_line.append(cls["className"])
             if result.first_class_line < 0 or rewriter.head_line < result.first_class_line:
                 result.first_class_line = rewriter.head_line
-            result.uses_tr_include |= rewriter.uses_tr and bool(cls.get("object"))
+            result.uses_tr_include |= (rewriter.uses_tr and bool(cls.get("object")) and style != syntax.QTLIKE)
             if rewriter.base:
                 result.bases.append((cls["className"], rewriter.base))
     return result

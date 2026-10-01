@@ -25,10 +25,12 @@ from rqt_migrate.tree import Options, migrate  # noqa: E402
 FIXTURES = os.path.join(TOOLS, "tests", "fixtures")
 
 
-def run_fixture(case: str, style: str = syntax.ANNOTATIONS, signals: str = syntax.SIGNALS_MEMBERS):
+def run_fixture(case: str, style: str = syntax.ANNOTATIONS, signals: str = syntax.SIGNALS_MEMBERS,
+                macros: str = syntax.MACROS_Q):
     root = os.path.join(FIXTURES, case)
     return migrate(os.path.join(root, "src"), moc.saved(os.path.join(root, "moc")),
-                   Options(reflect_moc_include="../include", title=case, style=style, signals=signals))
+                   Options(reflect_moc_include="../include", title=case, style=style, signals=signals,
+                           macros=macros))
 
 
 def read_dir(path: str) -> dict[str, str]:
@@ -380,6 +382,53 @@ class Qtlike(unittest.TestCase):
     def test_capability_qml_registration_is_still_generated(self):
         qml = run_fixture("qml", syntax.QTLIKE)
         self.assertIn('qmlRegisterType<Plain>("Demo", 2, 1, "Plain");', qml.files[syntax.QML_HEADER])
+
+
+class QtlikeRqtMacros(unittest.TestCase):
+    """--style qtlike --macros rqt: the library's own macros until compat.hpp exists."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.result = run_fixture("rewrites", syntax.QTLIKE, macros=syntax.MACROS_RQT)
+        cls.header = cls.result.files["counter.h"]
+        cls.lines = cls.header.splitlines()
+
+    def test_capability_header_is_the_qt_layer_umbrella_not_compat(self):
+        self.assertIn(syntax.HEADER_INCLUDE, self.lines)
+        self.assertNotIn(syntax.COMPAT_INCLUDE, self.header)
+
+    def test_capability_q_property_text_is_kept_under_the_rqt_name(self):
+        with open(os.path.join(FIXTURES, "rewrites", "src", "counter.h"), encoding="utf-8") as f:
+            original = f.read()
+        self.assertGreater(original.count("Q_PROPERTY("), 0)
+        self.assertNotIn("Q_PROPERTY", self.header)
+        self.assertEqual(self.header.count("RQT_PROPERTY("), original.count("Q_PROPERTY("))
+
+    def test_capability_q_object_becomes_rqt_object_which_declares_tr_itself(self):
+        self.assertNotIn("    Q_OBJECT", self.lines)
+        self.assertIn("    RQT_OBJECT", self.lines)
+        self.assertNotIn("Q_DECLARE_TR_FUNCTIONS", self.header)
+        self.assertNotIn(syntax.TR_INCLUDE, self.header)
+
+    def test_capability_class_head_stays_and_no_mixin_appears(self):
+        self.assertIn(": public QObject", self.header)
+        self.assertNotIn("rqt::Object", self.header)
+        self.assertNotIn("bind()", self.header)
+        self.assertNotIn("staticMetaObject", self.header)
+
+    def test_capability_enums_classinfo_and_invokables_use_annotations(self):
+        self.assertIn("    enum class [[=rqt::enum_]] Mode { Up, Down };", self.lines)
+        self.assertIn('class [[=rqt::classinfo{"Author", "Fixture \\"quoted\\""}]] Counter : public QObject',
+                      self.header)
+        self.assertIn("    [[=rqt::invokable]] int add(int n);", self.lines)
+        self.assertNotIn("Q_ENUM", self.header)
+        self.assertNotIn("Q_INVOKABLE", self.header)
+
+    def test_capability_q_interfaces_is_left_in_place_and_counted_as_migrated(self):
+        result = run_fixture("reports", syntax.QTLIKE, macros=syntax.MACROS_RQT)
+        self.assertTrue(items(result, "Q_INTERFACES", AUTO))
+        self.assertFalse(items(result, "Q_INTERFACES", MANUAL))
+        self.assertIn("    Q_INTERFACES(Shape)", result.files["gadget.h"].splitlines())
 
 
 class Binding(unittest.TestCase):

@@ -73,6 +73,12 @@ SLOT = "[[=rqt::slot]]"
 INVOKABLE = "[[=rqt::invokable]]"
 
 
+# qtlike only: rqt spells the macros the library defines (RQT_OBJECT, RQT_PROPERTY) and uses
+# annotations for the rest; q leaves every Q_ macro alone and relies on compat.hpp.
+MACROS_RQT = "rqt"
+MACROS_Q = "q"
+MACRO_MODES = (MACROS_RQT, MACROS_Q)
+
 SIGNALS_MEMBERS = "members"
 SIGNALS_BODIES = "bodies"
 SIGNAL_MODES = (SIGNALS_MEMBERS, SIGNALS_BODIES)

@@ -49,6 +49,7 @@ class Options:
     title: str = ""
     style: str = syntax.ANNOTATIONS
     signals: str = syntax.SIGNALS_MEMBERS  # qtlike only: data members, or functions with bodies
+    macros: str = syntax.MACROS_RQT  # qtlike only: the library's RQT_ macros, or Q_ macros through compat.hpp
 
 
 @dataclass
@@ -112,10 +113,10 @@ def migrate(src_root: str, provider: JsonProvider, options: Options, dst_root: s
     for rel, classes in per_file:
         src = sources[rel]
         result = rewrite_classes(src, rel, classes, report, uses_tr, static_meta, object_names, options.style,
-                                 options.signals)
+                                 options.signals, options.macros)
         if result.migrated_classes:
-            qtlike = options.style == syntax.QTLIKE
-            includes = [syntax.COMPAT_INCLUDE if qtlike else syntax.HEADER_INCLUDE]
+            compat = options.style == syntax.QTLIKE and options.macros == syntax.MACROS_Q
+            includes = [syntax.COMPAT_INCLUDE if compat else syntax.HEADER_INCLUDE]
             if result.uses_tr_include:
                 includes.append(syntax.TR_INCLUDE)
             add_includes(src, result.first_class_line, includes)
