@@ -84,8 +84,9 @@ def signal_member(types: list[str], name: str) -> str:
 
 
 def signal_names(names: list[str]) -> str:
-    """The annotation that keeps parameter names for QML handlers; unnamed ones are empty strings."""
-    return "[[=rqt::names(" + ", ".join(f'"{n}"' for n in names) + ")]]"
+    """The annotation that keeps parameter names for QML handlers: one comma-separated string,
+    an unnamed parameter being an empty entry."""
+    return '[[=rqt::names("' + ", ".join(names) + '")]]'
 
 
 def signal_body(arg_names: list[str], style: str = ANNOTATIONS) -> str:

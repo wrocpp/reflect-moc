@@ -328,7 +328,7 @@ class Qtlike(unittest.TestCase):
         self.assertNotIn("rqt::signal<void(QString)>", self.header)
 
     def test_capability_multi_line_signal_becomes_one_declaration(self):
-        self.assertIn('    [[=rqt::names("from", "to")]] rqt::signal<void(int, int)> moved;', self.lines())
+        self.assertIn('    [[=rqt::names("from, to")]] rqt::signal<void(int, int)> moved;', self.lines())
 
     def test_limit_bodies_mode_keeps_the_function_with_an_activate_body(self):
         header = run_fixture("rewrites", syntax.QTLIKE, syntax.SIGNALS_BODIES).files["counter.h"]
