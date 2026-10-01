@@ -15,9 +15,8 @@
 
 //! [Window constructor start]
 Window::Window(QWidget *parent)
-    : rqt::Object<QWidget>(parent), thread(new RenderThread(this))
+    : QWidget(parent), thread(new RenderThread(this))
 {
-    bind();
 //! [Window constructor start] //! [set up widgets and connections]
 
     label = new QLabel(this);

@@ -15,11 +15,11 @@ class QImage;
 QT_END_NAMESPACE
 
 //! [0]
-class RenderThread : public rqt::Object<QThread>
+class RenderThread : public QThread
 {
+    RQT_OBJECT
 
 public:
-    static QMetaObject const &staticMetaObject;
     RenderThread(QObject *parent = nullptr);
     ~RenderThread();
 
@@ -30,8 +30,8 @@ public:
 
     static QString infoKey() { return QStringLiteral("info"); }
 
-public:
-    [[=rqt::signal]] void renderedImage(const QImage &image, double scaleFactor) { rqt::emit{this}(image, scaleFactor); }
+signals:
+    [[=rqt::names("image, scaleFactor")]] rqt::signal<void(const QImage &, double)> renderedImage;
 
 protected:
     void run() override;
@@ -53,7 +53,6 @@ private:
     static constexpr int ColormapSize = 512;
     uint colormap[ColormapSize];
 };
-RQT_STATIC_META_OBJECT(RenderThread);
 //! [0]
 
 #endif // RENDERTHREAD_H

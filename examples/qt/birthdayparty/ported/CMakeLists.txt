@@ -13,7 +13,6 @@ set(CMAKE_AUTOMOC OFF)
 set(CMAKE_CXX_STANDARD 26)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
-add_compile_definitions(QT_NO_KEYWORDS)
 add_compile_options($<$<COMPILE_LANGUAGE:CXX>:-freflection>)
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/../../../../include)
 

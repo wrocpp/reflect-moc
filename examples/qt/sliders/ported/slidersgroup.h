@@ -15,17 +15,17 @@ class QBoxLayout;
 QT_END_NAMESPACE
 
 //! [0]
-class SlidersGroup : public rqt::Object<QGroupBox>
+class SlidersGroup : public QGroupBox
 {
+    RQT_OBJECT
 
 public:
-    static QMetaObject const &staticMetaObject;
     SlidersGroup(const QString &title, QWidget *parent = nullptr);
 
-public:
-    [[=rqt::signal]] void valueChanged(int value) { rqt::emit{this}(value); }
+signals:
+    [[=rqt::names("value")]] rqt::signal<void(int)> valueChanged;
 
-public:
+public slots:
     [[=rqt::slot]] void setValue(int value);
     [[=rqt::slot]] void setMinimum(int value);
     [[=rqt::slot]] void setMaximum(int value);
@@ -39,7 +39,6 @@ private:
     QDial *dial;
     QBoxLayout *slidersLayout;
 };
-RQT_STATIC_META_OBJECT(SlidersGroup);
 //! [0]
 
 #endif

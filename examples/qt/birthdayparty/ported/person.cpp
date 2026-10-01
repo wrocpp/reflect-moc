@@ -3,9 +3,8 @@
 
 #include "person.h"
 
-Person::Person(QObject *parent) : rqt::Object<QObject>(parent)
+Person::Person(QObject *parent) : QObject(parent)
 {
-    bind();
     m_shoe = new ShoeDescription(this);
 }
 
@@ -18,7 +17,7 @@ void ShoeDescription::setSize(int size)
 {
     if (m_size != size) {
         m_size = size;
-        shoeChanged();
+        emit shoeChanged();
     }
 }
 
@@ -31,7 +30,7 @@ void ShoeDescription::setColor(const QColor &color)
 {
     if (m_color != color) {
         m_color = color;
-        shoeChanged();
+        emit shoeChanged();
     }
 }
 
@@ -44,7 +43,7 @@ void ShoeDescription::setBrand(const QString &brand)
 {
     if (m_brand != brand) {
         m_brand = brand;
-        shoeChanged();
+        emit shoeChanged();
     }
 }
 
@@ -57,7 +56,7 @@ void ShoeDescription::setPrice(qreal price)
 {
     if (m_price != price) {
         m_price = price;
-        shoeChanged();
+        emit shoeChanged();
     }
 }
 
@@ -76,7 +75,7 @@ void Person::setName(const QString &name)
 {
     if (m_name != name) {
         m_name = name;
-        nameChanged();
+        emit nameChanged();
     }
 }
 
@@ -92,6 +91,6 @@ void Person::setShoe(ShoeDescription *shoe)
 
     if (*m_shoe != *shoe) {
         m_shoe = shoe;
-        shoeChanged();
+        emit shoeChanged();
     }
 }

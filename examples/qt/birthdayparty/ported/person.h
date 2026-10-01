@@ -9,23 +9,27 @@
 #include <QObject>
 #include <reflect_moc/qt/qt.hpp>
 
-class [[=rqt::classinfo{"QML.Element", "anonymous"}]] ShoeDescription : public rqt::Object<QObject>
+class [[=rqt::classinfo{"QML.Element", "anonymous"}]] ShoeDescription : public QObject
 {
+    RQT_OBJECT
+    RQT_PROPERTY(int size READ size WRITE setSize NOTIFY shoeChanged FINAL)
+    RQT_PROPERTY(QColor color READ color WRITE setColor NOTIFY shoeChanged FINAL)
+    RQT_PROPERTY(QString brand READ brand WRITE setBrand NOTIFY shoeChanged FINAL)
+    RQT_PROPERTY(qreal price READ price WRITE setPrice NOTIFY shoeChanged FINAL)
     QML_ANONYMOUS
 public:
-    static QMetaObject const &staticMetaObject;
-    template <class... Args> requires rqt::forwardable<ShoeDescription, Args...> explicit ShoeDescription(Args &&...args) : rqt::Object<QObject>(std::forward<Args>(args)...) { bind(); }
+    using QObject::QObject;
 
-    [[=rqt::property{.write = "setSize", .notify = "shoeChanged", .final = true}]] int size() const;
+    int size() const;
     void setSize(int);
 
-    [[=rqt::property{.write = "setColor", .notify = "shoeChanged", .final = true}]] QColor color() const;
+    QColor color() const;
     void setColor(const QColor &);
 
-    [[=rqt::property{.write = "setBrand", .notify = "shoeChanged", .final = true}]] QString brand() const;
+    QString brand() const;
     void setBrand(const QString &);
 
-    [[=rqt::property{.write = "setPrice", .notify = "shoeChanged", .final = true}]] qreal price() const;
+    qreal price() const;
     void setPrice(qreal);
 
     friend bool operator==(const ShoeDescription &lhs, const ShoeDescription &rhs)
@@ -37,8 +41,8 @@ public:
         return !operatorEqualsImpl(lhs, rhs);
     }
 
-public:
-    [[=rqt::signal]] void shoeChanged() { rqt::emit{this}(); }
+signals:
+    rqt::signal<void()> shoeChanged;
 
 private:
     static bool operatorEqualsImpl(const ShoeDescription &, const ShoeDescription &);
@@ -48,50 +52,48 @@ private:
     QString m_brand;
     qreal m_price = 0;
 };
-RQT_STATIC_META_OBJECT(ShoeDescription);
 
-class [[=rqt::classinfo{"QML.Element", "auto"}]] [[=rqt::classinfo{"QML.Creatable", "false"}]] [[=rqt::classinfo{"QML.UncreatableReason", "Person is an abstract base class."}]] Person : public rqt::Object<QObject>
+class [[=rqt::classinfo{"QML.Element", "auto"}]] [[=rqt::classinfo{"QML.Creatable", "false"}]] [[=rqt::classinfo{"QML.UncreatableReason", "Person is an abstract base class."}]] Person : public QObject
 {
+    RQT_OBJECT
+    RQT_PROPERTY(QString name READ name WRITE setName NOTIFY nameChanged FINAL)
+    RQT_PROPERTY(ShoeDescription *shoe READ shoe WRITE setShoe NOTIFY shoeChanged FINAL)
     QML_ELEMENT
     QML_UNCREATABLE("Person is an abstract base class.")
 public:
-    static QMetaObject const &staticMetaObject;
-    using rqt::Object<QObject>::Object;
+    using QObject::QObject;
 
     Person(QObject *parent = nullptr);
 
-    [[=rqt::property{.write = "setName", .notify = "nameChanged", .final = true}]] QString name() const;
+    QString name() const;
     void setName(const QString &);
 
-    [[=rqt::property{.write = "setShoe", .notify = "shoeChanged", .final = true}]] ShoeDescription *shoe() const;
+    ShoeDescription *shoe() const;
     void setShoe(ShoeDescription *shoe);
 
-public:
-    [[=rqt::signal]] void nameChanged() { rqt::emit{this}(); }
-    [[=rqt::signal]] void shoeChanged() { rqt::emit{this}(); }
+signals:
+    rqt::signal<void()> nameChanged;
+    rqt::signal<void()> shoeChanged;
 
 private:
     QString m_name;
     ShoeDescription *m_shoe = nullptr;
 };
-RQT_STATIC_META_OBJECT(Person);
 
 class [[=rqt::classinfo{"QML.Element", "auto"}]] Boy : public Person
 {
+    RQT_OBJECT
     QML_ELEMENT
 public:
-    static QMetaObject const &staticMetaObject;
-    template <class... Args> requires rqt::forwardable<Boy, Args...> explicit Boy(Args &&...args) : Person(std::forward<Args>(args)...) { bind(); }
+    using Person::Person;
 };
-RQT_STATIC_META_OBJECT(Boy);
 
 class [[=rqt::classinfo{"QML.Element", "auto"}]] Girl : public Person
 {
+    RQT_OBJECT
     QML_ELEMENT
 public:
-    static QMetaObject const &staticMetaObject;
-    template <class... Args> requires rqt::forwardable<Girl, Args...> explicit Girl(Args &&...args) : Person(std::forward<Args>(args)...) { bind(); }
+    using Person::Person;
 };
-RQT_STATIC_META_OBJECT(Girl);
 
 #endif // PERSON_H

@@ -5,9 +5,8 @@
 
 #include <QTimer>
 
-HappyBirthdaySong::HappyBirthdaySong(QObject *parent) : rqt::Object<QObject>(parent)
+HappyBirthdaySong::HappyBirthdaySong(QObject *parent) : QObject(parent)
 {
-    bind();
     auto *timer = new QTimer(this);
     QObject::connect(timer, &QTimer::timeout, this, &HappyBirthdaySong::advance);
     timer->start(1000);
@@ -27,7 +26,7 @@ void HappyBirthdaySong::setName(const QString &name)
 {
     if (m_name != name) {
         m_name = name;
-        nameChanged();
+        emit nameChanged();
     }
 
     m_lyrics.clear();

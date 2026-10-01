@@ -7,7 +7,6 @@
 #include <QWidget>
 #include <QGridLayout>
 #include <reflect_moc/qt/qt.hpp>
-#include <QtCore/qcoreapplication.h>
 
 QT_BEGIN_NAMESPACE
 class QCheckBox;
@@ -20,12 +19,11 @@ QT_END_NAMESPACE
 class SlidersGroup;
 
 //! [0]
-class Window : public rqt::Object<QWidget>
+class Window : public QWidget
 {
-    Q_DECLARE_TR_FUNCTIONS(Window)
+    RQT_OBJECT
 
 public:
-    static QMetaObject const &staticMetaObject;
     Window(QWidget *parent = nullptr);
 
 private:
@@ -45,7 +43,6 @@ private:
     QSpinBox *valueSpinBox;
     QBoxLayout *layout;
 };
-RQT_STATIC_META_OBJECT(Window);
 //! [0]
 
 #endif

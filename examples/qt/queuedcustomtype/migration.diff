@@ -1,6 +1,6 @@
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
-@@ -7,6 +7,16 @@
+@@ -7,6 +7,15 @@
  find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets)
  
  qt_standard_project_setup()
@@ -11,37 +11,14 @@
 +set(CMAKE_CXX_STANDARD 26)
 +set(CMAKE_CXX_STANDARD_REQUIRED ON)
 +set(CMAKE_CXX_EXTENSIONS OFF)
-+add_compile_definitions(QT_NO_KEYWORDS)
 +add_compile_options($<$<COMPILE_LANGUAGE:CXX>:-freflection>)
 +include_directories(${CMAKE_CURRENT_SOURCE_DIR}/../../../../include)
  
  qt_add_executable(queuedcustomtype
      block.cpp block.h
---- a/renderthread.cpp
-+++ b/renderthread.cpp
-@@ -8,8 +8,9 @@
- #include <QRgb>
- 
- RenderThread::RenderThread(QObject *parent)
--    : QThread(parent)
-+    : rqt::Object<QThread>(parent)
- {
-+    bind();
- }
- 
- RenderThread::~RenderThread()
-@@ -53,7 +54,7 @@
- //![processing the image (finish)]
-             const Block block(QRect(x1, y1, x2 - x1 + 1, y2 - y1 + 1),
-                         QColor(red/n, green/n, blue/n));
--            emit sendBlock(block);
-+            sendBlock(block);
-             if (isInterruptionRequested())
-                 return;
-             msleep(10);
 --- a/renderthread.h
 +++ b/renderthread.h
-@@ -6,22 +6,23 @@
+@@ -6,13 +6,14 @@
  
  #include <QImage>
  #include <QThread>
@@ -50,89 +27,52 @@
  class Block;
  
  //! [RenderThread class definition]
--class RenderThread : public QThread
-+class RenderThread : public rqt::Object<QThread>
+ class RenderThread : public QThread
  {
 -    Q_OBJECT
++    RQT_OBJECT
  
  public:
-+    static QMetaObject const &staticMetaObject;
      RenderThread(QObject *parent = nullptr);
-     ~RenderThread();
- 
+@@ -21,7 +22,7 @@
      void processImage(const QImage &image);
  
--signals:
+ signals:
 -    void sendBlock(const Block &block);
-+public:
-+    [[=rqt::signal]] void sendBlock(const Block &block) { rqt::emit{this}(block); }
++    [[=rqt::names("block")]] rqt::signal<void(const Block &)> sendBlock;
  
  protected:
      void run();
-@@ -29,6 +30,7 @@
- private:
-     QImage m_image;
- };
-+RQT_STATIC_META_OBJECT(RenderThread);
- //! [RenderThread class definition]
- 
- #endif
---- a/window.cpp
-+++ b/window.cpp
-@@ -15,8 +15,9 @@
- 
- //! [Window constructor start]
- Window::Window(QWidget *parent)
--    : QWidget(parent), thread(new RenderThread(this))
-+    : rqt::Object<QWidget>(parent), thread(new RenderThread(this))
- {
-+    bind();
- //! [Window constructor start] //! [set up widgets and connections]
- 
-     label = new QLabel(this);
 --- a/window.h
 +++ b/window.h
-@@ -9,25 +9,28 @@
+@@ -9,6 +9,7 @@
  #include <QPixmap>
  #include <QPushButton>
  #include <QWidget>
 +#include <reflect_moc/qt/qt.hpp>
-+#include <QtCore/qcoreapplication.h>
  
  class Block;
  class RenderThread;
- 
+@@ -16,18 +17,18 @@
  //! [Window class definition]
--class Window : public QWidget
-+class Window : public rqt::Object<QWidget>
+ class Window : public QWidget
  {
 -    Q_OBJECT
-+    Q_DECLARE_TR_FUNCTIONS(Window)
++    RQT_OBJECT
  
  public:
-+    static QMetaObject const &staticMetaObject;
      Window(QWidget *parent = nullptr);
      void loadImage(const QImage &image);
  
--public slots:
+ public slots:
 -    void addBlock(const Block &block);
-+public:
 +    [[=rqt::slot]] void addBlock(const Block &block);
  
--private slots:
+ private slots:
 -    void loadImage();
 -    void resetUi();
-+private:
 +    [[=rqt::slot]] void loadImage();
 +    [[=rqt::slot]] void resetUi();
  
  private:
      QLabel *label;
-@@ -37,6 +40,7 @@
-     QString path;
-     RenderThread *thread;
- };
-+RQT_STATIC_META_OBJECT(Window);
- //! [Window class definition]
- 
- #endif

@@ -11,9 +11,8 @@
 
 //! [0]
 Window::Window(QWidget *parent)
-    : rqt::Object<QWidget>(parent)
+    : QWidget(parent)
 {
-    bind();
     slidersGroup = new SlidersGroup(tr("Sliders"));
 
     createControls(tr("Controls"));

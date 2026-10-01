@@ -10,25 +10,23 @@
 #include <QPushButton>
 #include <QWidget>
 #include <reflect_moc/qt/qt.hpp>
-#include <QtCore/qcoreapplication.h>
 
 class Block;
 class RenderThread;
 
 //! [Window class definition]
-class Window : public rqt::Object<QWidget>
+class Window : public QWidget
 {
-    Q_DECLARE_TR_FUNCTIONS(Window)
+    RQT_OBJECT
 
 public:
-    static QMetaObject const &staticMetaObject;
     Window(QWidget *parent = nullptr);
     void loadImage(const QImage &image);
 
-public:
+public slots:
     [[=rqt::slot]] void addBlock(const Block &block);
 
-private:
+private slots:
     [[=rqt::slot]] void loadImage();
     [[=rqt::slot]] void resetUi();
 
@@ -40,7 +38,6 @@ private:
     QString path;
     RenderThread *thread;
 };
-RQT_STATIC_META_OBJECT(Window);
 //! [Window class definition]
 
 #endif

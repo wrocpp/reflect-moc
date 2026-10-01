@@ -12,7 +12,7 @@ void BirthdayPartyAttached::setRsvp(QDate rsvpDate)
 {
     if (m_rsvp != rsvpDate) {
         m_rsvp = rsvpDate;
-        rsvpChanged();
+        emit rsvpChanged();
     }
 }
 
@@ -25,7 +25,7 @@ void BirthdayParty::setHost(Person *host)
 {
     if (m_host != host) {
         m_host = host;
-        hostChanged();
+        emit hostChanged();
     }
 }
 
@@ -44,7 +44,7 @@ QQmlListProperty<Person> BirthdayParty::guests()
 void BirthdayParty::appendGuest(Person *guest)
 {
     m_guests.append(guest);
-    guestsChanged();
+    emit guestsChanged();
 }
 
 qsizetype BirthdayParty::guestCount() const
@@ -61,7 +61,7 @@ void BirthdayParty::clearGuests()
 {
     if (!m_guests.empty()) {
         m_guests.clear();
-        guestsChanged();
+        emit guestsChanged();
     }
 }
 
@@ -69,7 +69,7 @@ void BirthdayParty::replaceGuest(qsizetype index, Person *guest)
 {
     if (m_guests.size() > index) {
         m_guests[index] = guest;
-        guestsChanged();
+        emit guestsChanged();
     }
 }
 
@@ -77,7 +77,7 @@ void BirthdayParty::removeLastGuest()
 {
     if (!m_guests.empty()) {
         m_guests.removeLast();
-        guestsChanged();
+        emit guestsChanged();
     }
 }
 
@@ -114,7 +114,7 @@ qsizetype BirthdayParty::guestCount(QQmlListProperty<Person> *list)
 void BirthdayParty::startParty()
 {
     QDateTime time = QDateTime::currentDateTime();
-    partyStarted(time);
+    emit partyStarted(time);
 }
 
 QString BirthdayParty::announcement() const
@@ -126,7 +126,7 @@ void BirthdayParty::setAnnouncement(const QString &announcement)
 {
     if (m_announcement != announcement) {
         m_announcement = announcement;
-        announcementChanged();
+        emit announcementChanged();
     }
     qInfo().noquote() << announcement;
 }

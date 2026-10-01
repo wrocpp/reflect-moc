@@ -10,30 +10,24 @@
 #include <QStringList>
 #include <reflect_moc/qt/qt.hpp>
 
-class [[=rqt::classinfo{"QML.Element", "auto"}]] HappyBirthdaySong : public rqt::Object<QObject>, public QQmlPropertyValueSource
+class [[=rqt::classinfo{"QML.Element", "auto"}]] HappyBirthdaySong : public QObject, public QQmlPropertyValueSource
 {
+    RQT_OBJECT
+    Q_INTERFACES(QQmlPropertyValueSource)
+    RQT_PROPERTY(QString name READ name WRITE setName NOTIFY nameChanged FINAL)
     QML_ELEMENT
 public:
-    static QMetaObject const &staticMetaObject;
-    void *qt_metacast(const char *name) override
-    {
-        if (void *found = rqt::Object<QObject>::qt_metacast(name))
-            return found;
-        if (!qstrcmp(name, qobject_interface_iid<QQmlPropertyValueSource *>()))
-            return static_cast<QQmlPropertyValueSource *>(this);
-        return nullptr;
-    }
     explicit HappyBirthdaySong(QObject *parent = nullptr);
 
     void setTarget(const QQmlProperty &) override;
 
-    [[=rqt::property{.write = "setName", .notify = "nameChanged", .final = true}]] QString name() const;
+    QString name() const;
     void setName(const QString &);
 
-public:
-    [[=rqt::signal]] void nameChanged() { rqt::emit{this}(); }
+signals:
+    rqt::signal<void()> nameChanged;
 
-private:
+private slots:
     [[=rqt::slot]] void advance();
 
 private:
@@ -42,6 +36,5 @@ private:
     QQmlProperty m_target;
     QString m_name;
 };
-RQT_STATIC_META_OBJECT(HappyBirthdaySong);
 
 #endif // HAPPYBIRTHDAYSONG_H

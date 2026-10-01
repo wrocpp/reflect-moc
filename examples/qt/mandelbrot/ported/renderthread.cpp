@@ -13,9 +13,8 @@ int RenderThread::numPasses = 8;
 
 //! [0]
 RenderThread::RenderThread(QObject *parent)
-    : rqt::Object<QThread>(parent)
+    : QThread(parent)
 {
-    bind();
     for (int i = 0; i < ColormapSize; ++i)
         colormap[i] = rgbFromWaveLength(380.0 + (i * 400.0 / ColormapSize));
 }
@@ -58,7 +57,7 @@ void RenderThread::render(double centerX, double centerY, double scaleFactor,
 void RenderThread::run()
 {
     QElapsedTimer timer;
-    for (;;) {
+    forever {
         mutex.lock();
         const double devicePixelRatio = this->devicePixelRatio;
         const QSize resultSize = this->resultSize * devicePixelRatio;
@@ -138,7 +137,7 @@ void RenderThread::run()
                         str << elapsed << "ms";
                     image.setText(infoKey(), message);
 
-                    renderedImage(image, requestedScaleFactor);
+                    emit renderedImage(image, requestedScaleFactor);
                 }
 //! [5] //! [6]
                 ++pass;

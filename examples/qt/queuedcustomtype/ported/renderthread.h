@@ -11,18 +11,18 @@
 class Block;
 
 //! [RenderThread class definition]
-class RenderThread : public rqt::Object<QThread>
+class RenderThread : public QThread
 {
+    RQT_OBJECT
 
 public:
-    static QMetaObject const &staticMetaObject;
     RenderThread(QObject *parent = nullptr);
     ~RenderThread();
 
     void processImage(const QImage &image);
 
-public:
-    [[=rqt::signal]] void sendBlock(const Block &block) { rqt::emit{this}(block); }
+signals:
+    [[=rqt::names("block")]] rqt::signal<void(const Block &)> sendBlock;
 
 protected:
     void run();
@@ -30,7 +30,6 @@ protected:
 private:
     QImage m_image;
 };
-RQT_STATIC_META_OBJECT(RenderThread);
 //! [RenderThread class definition]
 
 #endif

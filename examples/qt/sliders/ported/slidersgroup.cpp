@@ -10,9 +10,8 @@
 
 //! [0]
 SlidersGroup::SlidersGroup(const QString &title, QWidget *parent)
-    : rqt::Object<QGroupBox>(title, parent)
+    : QGroupBox(title, parent)
 {
-    bind();
     slider = new QSlider;
     slider->setFocusPolicy(Qt::StrongFocus);
     slider->setTickPosition(QSlider::TicksBothSides);

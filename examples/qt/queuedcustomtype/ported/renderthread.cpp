@@ -8,9 +8,8 @@
 #include <QRgb>
 
 RenderThread::RenderThread(QObject *parent)
-    : rqt::Object<QThread>(parent)
+    : QThread(parent)
 {
-    bind();
 }
 
 RenderThread::~RenderThread()
@@ -54,7 +53,7 @@ void RenderThread::run()
 //![processing the image (finish)]
             const Block block(QRect(x1, y1, x2 - x1 + 1, y2 - y1 + 1),
                         QColor(red/n, green/n, blue/n));
-            sendBlock(block);
+            emit sendBlock(block);
             if (isInterruptionRequested())
                 return;
             msleep(10);
