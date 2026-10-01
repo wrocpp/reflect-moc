@@ -21,6 +21,10 @@ set(RQT_QT_CAPABILITY_TESTS
   capability_model_base
   capability_qml_binding_and_invokable
   capability_register_qml
+  capability_property_flags
+  capability_namespace_enum_parameter
+  capability_forwarding_constructor_and_templates
+  capability_private_members
   limit_parameter_names_must_agree)
 
 # Each must fail to compile, with this text in the compiler's output.

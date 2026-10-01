@@ -110,21 +110,12 @@ constexpr auto method_data() {
 
 // --- property rows ---------------------------------------------------------------------
 
-consteval unsigned property_flags(prop_desc const& d) {
-  unsigned f = QMC::DefaultPropertyFlags;
-  if (d.writable) f |= QMC::Writable;
-  if (present(d.reset)) f |= QMC::Resettable;
-  if (!resolved_by_id(d.type)) f |= QMC::EnumOrFlag;
-  if (is_std_setter(d)) f |= QMC::StdCppSet;
-  return f;
-}
-
 template <class D, std::size_t I>
 constexpr auto property_data() {
   constexpr prop_desc d = property_at<D>(I);
   using T = typename[:d.type:];
-  return QtMocHelpers::PropertyData<T>(string_index<D>(meta::identifier_of(d.anchor)), type_id<D, T>(),
-                                       property_flags(d), static_cast<unsigned>(notify_index(^^D, d)));
+  return QtMocHelpers::PropertyData<T>(string_index<D>(d.name.view()), type_id<D, T>(), d.flags,
+                                       static_cast<unsigned>(notify_index(^^D, d)));
 }
 
 // --- enum rows -------------------------------------------------------------------------

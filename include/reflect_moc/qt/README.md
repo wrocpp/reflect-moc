@@ -18,7 +18,6 @@ Include `<reflect_moc/qt/qt.hpp>`. Everything lives in namespace `rqt`.
 ```cpp
 struct Worker : rqt::Object<QThread> {            // default base: QObject
   Worker() { bind(); }                             // E3 (required for QML-created types)
-  // E2 alternative:  Worker() : rqt::Object<QThread>(this) {}
   // E4 alternative:  rqt::register_namespace<^^app>();   (no line per class)
 
   [[=rqt::property{.write = "setValue", .notify = "valueChanged", .reset = ""}]]
@@ -45,11 +44,20 @@ Class-level info goes on the class: `struct [[=rqt::classinfo{"key", "value"}]] 
 | form | what the class writes |
 |---|---|
 | E3 | `Worker() { bind(); }` (the most derived constructor body wins) |
-| E2 | `Worker() : rqt::Object<QThread>(this) {}` |
 | E4 | nothing in the class; once: `rqt::register_namespace<^^app>();` |
 
+There is no E2 (`rqt::Object<B>(this)`): a pointer to another reflected object is
+indistinguishable from `this`, and a wrong guess would silently lose the parent.
+
 E4 does not see `QQmlPrivate::QQmlElement<T>` (its `typeid` differs), so types
-that QML creates need E2 or E3.
+that QML creates need E3.
+
+Private and protected members: slots, invokables, signals and MEMBER-style data
+(`private slots:`) need no extra line. Functions are called through
+`std::meta::extract` (a splice is access-checked, extract of a function is not),
+private data members through their offset. Limit: a non-public function with
+default arguments gets no cloned rows, because a pointer to member cannot supply
+the default (test: `capability_private_members`).
 
 ## Annotations
 
@@ -63,17 +71,22 @@ that QML creates need E2 or E3.
 | `rqt::flag` | nested enum | `Q_FLAG` |
 | `rqt::classinfo{key, value}` | class | `Q_CLASSINFO` |
 
-`rqt::property` fields, all optional. They are `rqt::name` (inline text, at most
+`rqt::property` fields, all optional, in this order (a designated initializer keeps it):
+
+| field | default | meaning |
+|---|---|---|
+| `.read` | `""` | READ function; empty means the annotated getter |
+| `.write` | `""` | WRITE function |
+| `.notify` | `""` | NOTIFY signal |
+| `.reset` | `""` | RESET function |
+| `.name` | `""` | the property name; empty means the name of the getter or data member |
+| `.final`, `.constant`, `.required`, `.user` | `false` | FINAL, CONSTANT, REQUIRED, USER |
+| `.designable`, `.scriptable`, `.stored` | `true` | DESIGNABLE, SCRIPTABLE, STORED |
+
+The name fields are `rqt::short_text` (inline text, at most
 63 characters) and take a string literal: `.write = "setValue"`. A
 `char const*` in an annotation would fail on read-back with `reflect_constant failed`.
 `rqt::classinfo{key, value}` takes the same kind of literals (value up to 255 characters).
-
-| field | meaning |
-|---|---|
-| `.read` | explicit getter name; empty means the annotated getter itself |
-| `.write` | `WRITE` function name |
-| `.notify` | `NOTIFY` signal name |
-| `.reset` | `RESET` function name |
 
 On a data member the property is MEMBER-style: read and write go straight to the
 member. A `.notify` signal is emitted after a write through Qt.
@@ -97,13 +110,36 @@ Each name is resolved to a member at compile time. A typo is a build error
 `rqt::cast`, `rqt::connect`.
 
 **Tier B (two lines, optional).** In the class: `static QMetaObject const& staticMetaObject;`
-and outside it: `QMetaObject const& T::staticMetaObject = rqt::static_meta_object<T>;`
-(macro: `RQT_STATIC_META_OBJECT(T)`). This makes stock `qobject_cast<T*>`,
+and outside it: `inline QMetaObject const& T::staticMetaObject = rqt::static_meta_object<T>;`
+(macro: `RQT_STATIC_META_OBJECT(T);`, which is `inline`, so a class in a header
+included by several translation units is fine). This makes stock `qobject_cast<T*>`,
 pointer-to-member and functor `QObject::connect`, and `qmlRegisterType<T>` work.
 `QtPrivate::HasQ_OBJECT_Macro` is specialized only for classes that declare their
 own `staticMetaObject` (checked by reflection). A blanket specialization would let
 `qobject_cast<T*>` compile against the inherited `QObject::staticMetaObject` and
 succeed for any QObject.
+
+## Constructors
+
+Every class needs a constructor body that calls `bind()` (or the E2 mem-initializer).
+Inherited constructors (`using Base::Base;`) do NOT run `bind()`. Write a forwarding
+constructor template instead; `bind()` works from it:
+
+```cpp
+struct Window : rqt::Object<QWidget> {
+  template <class... A>
+    requires rqt::forwardable<Window, A...>
+  explicit Window(A&&... a) : rqt::Object<QWidget>(std::forward<A>(a)...) { bind(); }
+};
+```
+
+The `requires rqt::forwardable<Window, A...>` line is mandatory: without it the template
+also accepts a `Window` argument, the class looks move-constructible, and Qt's `QMetaType`
+for it instantiates a move that fails with
+`use of deleted function 'rqt::Object<QWidget>::Object(rqt::Object<QWidget>&&)'`.
+
+Member function templates and constructor templates are skipped by the reflection
+tables (test: `capability_forwarding_constructor_and_templates`).
 
 ## Custom types
 

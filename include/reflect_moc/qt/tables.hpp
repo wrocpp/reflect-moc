@@ -5,6 +5,8 @@
 
 #include "annotations.hpp"
 
+#include <QtCore/qtmocconstants.h>
+
 #include <algorithm>
 #include <cstddef>
 #include <initializer_list>
@@ -37,7 +39,8 @@ consteval std::string cat(std::initializer_list<std::string_view> parts) {
 consteval std::string qualified_name(info t) {
   std::string s{meta::identifier_of(t)};
   // The global namespace, and an anonymous one, have no identifier and end the walk.
-  for (info p = meta::parent_of(t); (meta::is_namespace(p) || meta::is_class_type(p)) && meta::has_identifier(p);
+  for (info p = meta::parent_of(t);
+       (meta::is_namespace(p) || (meta::is_type(p) && meta::is_class_type(p))) && meta::has_identifier(p);
        p = meta::parent_of(p))
     s = cat({meta::identifier_of(p), "::", s});
   return s;
@@ -73,7 +76,10 @@ consteval std::size_t default_count(info fn) {
 consteval void append_entries(std::vector<method_entry>& out, info fn) {
   std::size_t const full = meta::parameters_of(fn).size();
   out.push_back({.fn = fn, .nargs = full, .cloned = false});
-  for (std::size_t omitted = 1; omitted <= default_count(fn); ++omitted)
+  // A non-public function has no clones: the call goes through a pointer to
+  // member, which cannot supply a default argument.
+  std::size_t const clones = meta::is_public(fn) ? default_count(fn) : 0;
+  for (std::size_t omitted = 1; omitted <= clones; ++omitted)
     out.push_back({.fn = fn, .nargs = full - omitted, .cloned = true});
 }
 
@@ -120,7 +126,11 @@ consteval bool resolved_by_id(info t) {
 
 consteval std::string type_name(info t) {
   t = meta::remove_cvref(t);
-  if (meta::is_enum_type(t) && meta::has_identifier(t) && meta::is_class_type(meta::parent_of(t)))
+  // An enum nested in a class is named by its own identifier, as moc writes it
+  // and as Qt looks the enumerator up; one in a namespace (Qt::Orientation) is
+  // written qualified.
+  info const parent = meta::parent_of(t);
+  if (meta::is_enum_type(t) && meta::has_identifier(t) && meta::is_type(parent) && meta::is_class_type(parent))
     return std::string{meta::identifier_of(t)};
   return std::string{meta::display_string_of(t)};
 }
@@ -144,6 +154,8 @@ struct prop_desc {
   info write = absent();
   info notify = absent();
   info reset = absent();
+  short_text name{};
+  unsigned flags = 0;
   bool writable = false;
 };
 
@@ -199,13 +211,46 @@ consteval prop_desc make_prop(info cls, info anchor) {
     throw meta::exception("rqt::property goes on a getter or a non-static data member", anchor);
   }
   resolve_accessors(d, cls, p);
+  d.name = p.name.view().empty() ? short_text{meta::identifier_of(anchor)} : p.name;
   return d;
+}
+
+// moc marks a setter named set<Name> as the standard C++ one.
+consteval bool is_std_setter(prop_desc const& d) {
+  if (!present(d.write) || !meta::has_identifier(d.write)) return false;
+  std::string expected{"set"};
+  std::string_view const name = d.name.view();
+  expected.push_back(static_cast<char>(name[0] >= 'a' && name[0] <= 'z' ? name[0] - 'a' + 'A' : name[0]));
+  expected.append(name.substr(1));
+  return meta::identifier_of(d.write) == expected;
+}
+
+// The PropertyData flags, as moc writes them.
+consteval unsigned property_flags_of(prop_desc const& d, property const& p) {
+  namespace QMC = QtMocConstants;
+  unsigned f = QMC::Readable;
+  if (p.designable) f |= QMC::Designable;
+  if (p.scriptable) f |= QMC::Scriptable;
+  if (p.stored) f |= QMC::Stored;
+  if (p.user) f |= QMC::User;
+  if (p.constant) f |= QMC::Constant;
+  if (p.final) f |= QMC::Final;
+  if (p.required) f |= QMC::Required;
+  if (d.writable) f |= QMC::Writable;
+  if (present(d.reset)) f |= QMC::Resettable;
+  if (!resolved_by_id(d.type)) f |= QMC::EnumOrFlag;
+  if (is_std_setter(d)) f |= QMC::StdCppSet;
+  return f;
 }
 
 consteval std::vector<prop_desc> make_props(info cls) {
   std::vector<prop_desc> out;
   for (auto m : meta::members_of(cls, unchecked))
-    if (has<property>(m)) out.push_back(make_prop(cls, m));
+    if (has<property>(m)) {
+      prop_desc d = make_prop(cls, m);
+      d.flags = property_flags_of(d, get<property>(m));
+      out.push_back(d);
+    }
   return out;
 }
 
@@ -218,6 +263,8 @@ struct prop_row {
   std::size_t write = 0;
   std::size_t notify = 0;
   std::size_t reset = 0;
+  short_text name{};
+  unsigned flags = 0;
   bool writable = false;
 };
 
@@ -242,6 +289,8 @@ consteval std::vector<prop_row> make_prop_rows(info cls) {
                    .write = position_of(cls, d.write),
                    .notify = position_of(cls, d.notify),
                    .reset = position_of(cls, d.reset),
+                   .name = d.name,
+                   .flags = d.flags,
                    .writable = d.writable});
   return out;
 }
@@ -259,6 +308,8 @@ consteval prop_desc expand_prop(info cls, prop_row const& r) {
               .write = member_at(cls, r.write),
               .notify = member_at(cls, r.notify),
               .reset = member_at(cls, r.reset),
+              .name = r.name,
+              .flags = r.flags,
               .writable = r.writable};
   d.type = present(d.member) ? meta::remove_cvref(meta::type_of(d.member))
                              : meta::remove_cvref(meta::return_type_of(d.read));
@@ -272,16 +323,6 @@ consteval prop_desc property_at(std::size_t i) {
 
 consteval int notify_index(info cls, prop_desc const& d) {
   return present(d.notify) ? entry_index(cls, d.notify) : -1;
-}
-
-// moc marks a setter named set<Name> as the standard C++ one.
-consteval bool is_std_setter(prop_desc const& d) {
-  if (!present(d.write) || !meta::has_identifier(d.write)) return false;
-  std::string expected{"set"};
-  std::string_view const name = meta::identifier_of(d.anchor);
-  expected.push_back(static_cast<char>(name[0] >= 'a' && name[0] <= 'z' ? name[0] - 'a' + 'A' : name[0]));
-  expected.append(name.substr(1));
-  return meta::identifier_of(d.write) == expected;
 }
 
 // --- enums and class info ------------------------------------------------------------
@@ -327,7 +368,7 @@ consteval void pool_methods(string_pool& pool, info cls) {
 
 consteval void pool_properties(string_pool& pool, info cls) {
   for (auto d : make_props(cls)) {
-    pool.add(meta::identifier_of(d.anchor));
+    pool.add(d.name.view());
     pool.add_type(d.type);
   }
 }

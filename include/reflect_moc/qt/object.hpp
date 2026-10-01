@@ -82,10 +82,9 @@ class Object : public B, public object_tag {
   using B::B;
   Object() = default;
 
-  // E2: `Worker() : rqt::Object<QThread>(this) {}`. Self is complete in a mem-initializer.
-  template <class Self, class... A>
-    requires std::derived_from<Self, Object>
-  explicit Object(Self*, A&&... a) : B(std::forward<A>(a)...), info_(&detail::info_for<Self>) {}
+  // There is no constructor that takes `this` (spike E2): it cannot be told
+  // apart from a parent pointer to another reflected object, and a wrong guess
+  // silently loses the parent.
 
   // E3: `Worker() { bind(); }`. The most derived constructor body runs last.
   template <class Self>
@@ -147,6 +146,13 @@ class Object : public B, public object_tag {
   mutable std::atomic<detail::class_info const*> info_{nullptr};
 };
 
+// The constraint for a forwarding constructor template: it must not capture a
+// copy or move of the class itself. Without it Base(A&&...) makes the class look
+// move-constructible, and Qt's QMetaType for the class then instantiates a move
+// that forwards a Base to QWidget(const QWidget&), which is deleted.
+template <class Self, class... A>
+concept forwardable = !(sizeof...(A) == 1 && (std::is_base_of_v<Self, std::remove_cvref_t<A>> && ...));
+
 // E4: register every rqt::Object class declared directly in a namespace.
 template <meta::info Ns>
 bool register_namespace() {
@@ -201,5 +207,6 @@ struct HasQ_OBJECT_Macro<D> {
 };
 }  // namespace QtPrivate
 
-// Tier B, outside the class: QMetaObject const& T::staticMetaObject = rqt::static_meta_object<T>;
-#define RQT_STATIC_META_OBJECT(T) QMetaObject const& T::staticMetaObject = ::rqt::static_meta_object<T>
+// Tier B, outside the class: inline QMetaObject const& T::staticMetaObject = rqt::static_meta_object<T>;
+// inline, so the class can live in a header included by several translation units.
+#define RQT_STATIC_META_OBJECT(T) inline QMetaObject const& T::staticMetaObject = ::rqt::static_meta_object<T>
