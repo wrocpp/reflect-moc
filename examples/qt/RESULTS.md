@@ -25,14 +25,16 @@ Migration cost, from each `migration.diff` (lines added and removed over all cha
 | queuedcustomtype | +32 -14 (5 files) | +17 -6 (3 files) | 21 | 9 |
 | birthdayparty | +120 -79 (10 files) | +73 -38 (7 files) | 90 | 45 |
 
-Build and output, qtlike ports at the library tree of this run:
+Build and output, qtlike ports, built from a snapshot of committed code (`git archive HEAD
+include examples/qt`, so later library edits cannot change a run). Build 1: before the owner anchor,
+data-member signals with the lambda-tag type.
 
-| example | built without moc | output identical | warnings (`-Wall -Wextra`) |
+| example | moc lines in log | output identical | warnings (`-Wall -Wextra`) |
 |---|---|---|---|
-| mandelbrot | yes | yes, 11 lines | 5 |
-| queuedcustomtype | yes | yes, 15 lines | 6 |
-| birthdayparty | yes (one run earlier) | yes, 54 lines (same run) | 42 |
-| sliders | no | n/a | n/a |
+| mandelbrot | 0 | yes, 11 lines | 5 |
+| queuedcustomtype | 0 | yes, 15 lines | 5 |
+| birthdayparty | 0 | yes, 54 lines | 42 |
+| sliders | build fails | n/a | n/a |
 
 - **Warnings before the linkage fix.** All of them are `-Wsubobject-linkage`: "'C' has a
   field 'rqt::signal<void(...)> C::name' whose type has internal linkage". They are one per
@@ -44,8 +46,9 @@ Build and output, qtlike ports at the library tree of this run:
   connect. With the signal a data member Qt rejects it
   (`qobjectdefs_impl.h:547:70: error: invalid conversion from 'QObject*' to 'SlidersGroup*'`).
   The tool leaves the line as in the Qt original; the fix belongs to the library.
-- Birthdayparty built and matched in an earlier run; the last rebuild broke on uncommitted
-  library edits in flight (`field 'nameChanged' has incomplete type`), so it needs a rerun.
+- Birthdayparty passes against committed code. An earlier rebuild against the working tree
+  broke on uncommitted library edits in flight, which is why the snapshot is used.
+- Build 2 (HEAD after the linkage fix and the signal-as-receiver fix) is still to be added.
 
 Everything below is the first pass, the **annotation/mixin syntax**
 (`rqt-migrate --style annotations`): `class C : public rqt::Object<QObject>`, `bind();` in
