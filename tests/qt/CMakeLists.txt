@@ -32,6 +32,7 @@ set(RQT_QT_CAPABILITY_TESTS
   capability_data_member_signals
   capability_compat_header_moc_syntax
   capability_interface_bases
+  capability_signal_to_signal_connect
   limit_parameter_names_must_agree)
 
 # Each must fail to compile, with this text in the compiler's output.

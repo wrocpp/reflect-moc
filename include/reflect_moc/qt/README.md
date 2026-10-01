@@ -240,6 +240,11 @@ The type must be declared with `Q_DECLARE_METATYPE` or be a Qt-known type.
   `RQT_OBJECT` and a signal would overwrite the published owner (same message); a class with a
   virtual base is not supported. Signals need `RQT_OBJECT` (a mixin class `rqt::Object<B>` has no anchor).
 - **Size.** One pointer per signal, plus one byte for the anchor. `[[no_unique_address]]` has no use here.
+- **A signal as the receiver of a connect** (`connect(a, &A::s, b, &B::t)` with `t` a signal member) emits
+  `t` once per `s`; the receiver's arguments are a prefix of the sender's. `QObject::disconnect(a, &A::s, b, &B::t)`
+  for that pair cannot match: Qt implements its Compare call only for pointers to member functions. Disconnect
+  with the `QMetaObject::Connection` handle, or `disconnect(a, &A::s, b, nullptr)`
+  (test `capability_signal_to_signal_connect`).
 - **`&A::sig` is a pointer to a data member**, so `qOverload<...>(&A::sig)` does not apply;
   `QObject::connect(a, &A::sig, ...)`, `QMetaMethod::fromSignal` and `QSignalSpy(a, &A::sig)` work.
 - **Overloaded signals are impossible as data members**: two members cannot share a name. A class

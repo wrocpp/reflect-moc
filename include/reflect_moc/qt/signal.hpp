@@ -135,7 +135,17 @@ struct FunctionPointer<rqt::signal<void(A...), Owner> Obj::*> {
   using ReturnType = void;
   using Function = rqt::signal<void(A...), Owner> Obj::*;
   enum { ArgumentCount = sizeof...(A), IsPointerToMemberFunction = true };
+  // A signal used as a slot: (o->*f)(args...) on a pointer to a callable data member calls
+  // signal::operator(), which emits. Qt passes the receiver as a plain QObject* for anything that is
+  // not a pointer to member function (qobjectdefs_impl.h, QCallableObject::impl), so take QObject*
+  // and cast. The arguments are read with this signal's own types, a prefix of the sender's:
+  // arg[0] is the return slot, the arguments start at arg[1].
   template <typename SignalArgs, typename R>
-  static void call(Function, Obj*, void**) {}
+  static void call(Function f, QObject* receiver, void** arg) {
+    [&]<std::size_t... I>(std::index_sequence<I...>) {
+      (static_cast<Obj*>(receiver)->*f)(
+          *reinterpret_cast<std::remove_reference_t<std::tuple_element_t<I, std::tuple<A...>>>*>(arg[I + 1])...);
+    }(std::index_sequence_for<A...>{});
+  }
 };
 }  // namespace QtPrivate
