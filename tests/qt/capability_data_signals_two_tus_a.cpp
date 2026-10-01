@@ -30,13 +30,11 @@ int main(int argc, char** argv) {
   int const here = QMetaMethod::fromSignal(&SharedSignals::changed).methodIndex();
   CHECK(here == second_unit_changed_index());
 
-  // Is the member type the same in both translation units? The closure in rqt::signal's default
-  // template argument has internal linkage, so formally it is not (an ODR violation that GCC reports
-  // as -Wsubobject-linkage for a header class). Everything above works anyway; this line records what
-  // this compiler does, and the README states it.
+  // the member type is one type with external linkage in both translation units (ODR), and the test
+  // builds with -Werror and without -Wno-subobject-linkage
   char const* const mine = typeid(object.changed).name();
   char const* const theirs = second_unit_signal_type_name();
-  std::printf("signal member type identical across translation units: %s (%s | %s)\n",
-              std::strcmp(mine, theirs) == 0 ? "yes" : "no", mine, theirs);
+  CHECK(std::strcmp(mine, theirs) == 0);
+  CHECK(mine[0] != '*');  // GCC marks a type with internal linkage with a leading '*'
   return rqt_test::finish("capability_data_signals_two_tus");
 }

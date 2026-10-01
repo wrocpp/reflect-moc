@@ -228,25 +228,24 @@ The type must be declared with `Q_DECLARE_METATYPE` or be a Qt-known type.
 
 ### Limits of the Qt-like syntax and data-member signals
 
-- **Signals as data members find their owner with pointer arithmetic**: `this` minus the member's
-  `std::meta::offset_of`. That is what Qt itself does for some internals, but the C++ standard
-  gives no guarantee for a class that is not standard-layout (every QObject class is not: it has
-  virtual functions). It works on GCC 16.2 on Linux aarch64 (tested); the layout of a class with
-  a vtable and one non-virtual base is stable, and the offset comes from the compiler
-  (`offset_of`), not from a guess. A class with a virtual base, or a signal member inside a
-  base of a virtual-inheritance diamond, is not supported.
-- **One byte per signal.** Each `rqt::signal` member is an empty class and takes a byte (plus
-  padding). `[[no_unique_address]]` on the member would give the members the same address and
-  break the offset rule, so do not use it on a signal.
+- **How a signal member finds its owner.** `RQT_OBJECT` declares a hidden first data member,
+  `rqt_anchor_`. Its constructor computes the owner pointer (its own address minus its own
+  `std::meta::offset_of`, which comes from the compiler) and publishes it in a thread-local; every
+  `rqt::signal` constructed after it keeps that pointer (8 bytes per signal) and picks its signal
+  from a table of member offsets built by reflection. `rqt::signal<void(A...)>` is one type for
+  every member of one signature, with external linkage, so a class in a header is the same type in
+  every translation unit (test `capability_data_signals_two_tus`, built with `-Werror`).
+  Consequences: `RQT_OBJECT` must come first in the class, before any signal (a signal constructed
+  with no owner prints a message and aborts); an rqt class declared as a MEMBER between
+  `RQT_OBJECT` and a signal would overwrite the published owner (same message); a class with a
+  virtual base is not supported. Signals need `RQT_OBJECT` (a mixin class `rqt::Object<B>` has no anchor).
+- **Size.** One pointer per signal, plus one byte for the anchor. `[[no_unique_address]]` has no use here.
 - **`&A::sig` is a pointer to a data member**, so `qOverload<...>(&A::sig)` does not apply;
   `QObject::connect(a, &A::sig, ...)`, `QMetaMethod::fromSignal` and `QSignalSpy(a, &A::sig)` work.
 - **Overloaded signals are impossible as data members**: two members cannot share a name. A class
   that overloads a signal keeps the function form, `[[=rqt::signal_function]]`, for those.
 - **`QtPrivate::FunctionPointer` is Qt's internal namespace.** The specialization in `signal.hpp`
   follows its shape in Qt 6.10.3 (the version tested); other versions are not tested.
-- **The closure in `rqt::signal`'s default template argument** gives every member its own type. The
-  test `capability_data_signals_two_tus` compares the mangled type of a header class's signal member
-  in two translation units of one executable.
 - **Function-valued `DESIGNABLE`/`SCRIPTABLE`/`STORED`/`USER` and `BINDABLE`** in `RQT_PROPERTY`
   stop the build with a message that they are not supported. `Q_GADGET`, `Q_NAMESPACE`,
   `Q_INTERFACES`, and slots or signals that are only named in `slots:` or `signals:` sections are

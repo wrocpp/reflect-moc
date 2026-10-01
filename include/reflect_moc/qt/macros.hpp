@@ -39,7 +39,9 @@
  private:                                                                                                  \
   static void qt_static_metacall(::QObject* rqt_o, ::QMetaObject::Call rqt_call, int rqt_id, void** rqt_args) { \
     ::rqt::static_call<RQT_SELF>(rqt_o, rqt_call, rqt_id, rqt_args);                                       \
-  }
+  }                                                                                                        \
+  /* the first data member: it publishes the owner for the signals declared after it */                    \
+  ::rqt::owner_anchor<> rqt_anchor_;
 
 // Q_ENUM(Mode), Q_FLAG(Opts) and Q_CLASSINFO("key", "value"): static constexpr holders the library finds
 // by reflection. The enum (and for Q_FLAG the QFlags alias) must already be declared.

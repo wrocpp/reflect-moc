@@ -94,10 +94,9 @@ struct names {
   constexpr names(char const (&literal)[N]) : list(literal) {}
 };
 
-// `rqt::signal<void(int)> valueChanged;` as a bodyless data member of a class with a meta-object.
-// Owner is the class being defined; the closure in Tag gives every declaration its own type, so
-// two members of the same signature stay distinct. Defined in signal.hpp.
-template <class Sig, meta::info Owner = meta::current_class(), auto Tag = [] {}>
+// `rqt::signal<void(int)> valueChanged;` as a bodyless data member of a class with RQT_OBJECT.
+// Owner is the class being defined. Defined in signal.hpp.
+template <class Sig, meta::info Owner = meta::current_class()>
 struct signal;
 
 // --- RQT_PROPERTY: the exact Q_PROPERTY text, parsed at compile time ------------------------
