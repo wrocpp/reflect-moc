@@ -29,6 +29,7 @@ set(RQT_QT_CAPABILITY_TESTS
   capability_property_order_follows_explicit_index
   capability_static_metaobject_one_line
   capability_qt_like_syntax
+  capability_data_member_signals
   limit_parameter_names_must_agree)
 
 # Each must fail to compile, with this text in the compiler's output.
@@ -71,6 +72,12 @@ foreach(name IN LISTS RQT_QT_CAPABILITY_TESTS)
   add_test(NAME ${name} COMMAND ${name})
   set_tests_properties(${name} PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen" LABELS qt)
 endforeach()
+
+# QSignalSpy, when QtTest is installed.
+if(TARGET Qt6::Test)
+  target_link_libraries(capability_data_member_signals PRIVATE Qt6::Test)
+  target_compile_definitions(capability_data_member_signals PRIVATE RQT_HAVE_QTTEST)
+endif()
 
 # One class in a header, two translation units, one executable.
 add_executable(capability_static_metaobject_two_tus
