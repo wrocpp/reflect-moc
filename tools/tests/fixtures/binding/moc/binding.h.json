@@ -1,0 +1,193 @@
+{
+ "classes": [
+  {
+   "className": "Plain",
+   "lineNumber": 13,
+   "object": true,
+   "qualifiedClassName": "Plain",
+   "superClasses": [
+    {
+     "access": "public",
+     "name": "QObject"
+    }
+   ]
+  },
+  {
+   "className": "Child",
+   "lineNumber": 20,
+   "object": true,
+   "qualifiedClassName": "Child",
+   "superClasses": [
+    {
+     "access": "public",
+     "name": "Plain"
+    }
+   ]
+  },
+  {
+   "className": "Owner",
+   "lineNumber": 27,
+   "object": true,
+   "qualifiedClassName": "Owner",
+   "superClasses": [
+    {
+     "access": "public",
+     "name": "QObject"
+    }
+   ]
+  },
+  {
+   "className": "Inline",
+   "lineNumber": 35,
+   "object": true,
+   "qualifiedClassName": "Inline",
+   "superClasses": [
+    {
+     "access": "public",
+     "name": "QObject"
+    }
+   ]
+  },
+  {
+   "className": "Defaulted",
+   "lineNumber": 50,
+   "object": true,
+   "qualifiedClassName": "Defaulted",
+   "superClasses": [
+    {
+     "access": "public",
+     "name": "QObject"
+    }
+   ]
+  },
+  {
+   "className": "Bare",
+   "lineNumber": 58,
+   "object": true,
+   "qualifiedClassName": "Bare",
+   "superClasses": [
+    {
+     "access": "public",
+     "name": "QObject"
+    }
+   ]
+  },
+  {
+   "className": "Casted",
+   "lineNumber": 64,
+   "object": true,
+   "qualifiedClassName": "Casted",
+   "superClasses": [
+    {
+     "access": "public",
+     "name": "QObject"
+    }
+   ]
+  },
+  {
+   "className": "Linked",
+   "lineNumber": 71,
+   "object": true,
+   "qualifiedClassName": "Linked",
+   "signals": [
+    {
+     "access": "public",
+     "arguments": [
+      {
+       "name": "value",
+       "type": "int"
+      }
+     ],
+     "index": 0,
+     "lineNumber": 77,
+     "name": "changed",
+     "returnType": "void"
+    }
+   ],
+   "superClasses": [
+    {
+     "access": "public",
+     "name": "QObject"
+    }
+   ]
+  },
+  {
+   "className": "Meta",
+   "lineNumber": 80,
+   "object": true,
+   "qualifiedClassName": "Meta",
+   "superClasses": [
+    {
+     "access": "public",
+     "name": "QObject"
+    }
+   ]
+  },
+  {
+   "className": "Holder",
+   "lineNumber": 87,
+   "object": true,
+   "properties": [
+    {
+     "constant": true,
+     "designable": true,
+     "final": false,
+     "index": 0,
+     "lineNumber": 90,
+     "name": "plain",
+     "read": "plain",
+     "required": false,
+     "scriptable": true,
+     "stored": true,
+     "type": "Plain*",
+     "user": false
+    }
+   ],
+   "qualifiedClassName": "Holder",
+   "superClasses": [
+    {
+     "access": "public",
+     "name": "QObject"
+    }
+   ]
+  },
+  {
+   "className": "Circle",
+   "interfaces": [
+    [
+     {
+      "className": "Shape",
+      "id": "\"org.example.Shape\""
+     }
+    ]
+   ],
+   "lineNumber": 96,
+   "object": true,
+   "qualifiedClassName": "Circle",
+   "superClasses": [
+    {
+     "access": "public",
+     "name": "QObject"
+    },
+    {
+     "access": "public",
+     "name": "Shape"
+    }
+   ]
+  },
+  {
+   "className": "Quiet",
+   "lineNumber": 104,
+   "object": true,
+   "qualifiedClassName": "Quiet",
+   "superClasses": [
+    {
+     "access": "public",
+     "name": "QObject"
+    }
+   ]
+  }
+ ],
+ "inputFile": "binding.h",
+ "outputRevision": 69
+}

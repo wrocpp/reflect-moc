@@ -10,7 +10,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
-from . import syntax
+from . import ctors, syntax
 from .report import Report
 from .text import Source, has_top_level, indent_of, matching, split_top_level
 
@@ -76,6 +76,13 @@ _SLOTS_SECTION = re.compile(r"^(\s*)(public|protected|private)\s+(?:slots|Q_SLOT
 # has no annotation field yet.
 _PROPERTY_DEFAULTS = {"designable": True, "scriptable": True, "stored": True, "user": False}
 
+# Q_PROPERTY flags that are true when written and have no annotation field.
+_PROPERTY_FLAGS = ("final", "constant", "required")
+
+_ACCESS_LABEL = re.compile(r"^\s*(public|protected|private)\b(?:\s+(?:slots|Q_SLOTS))?\s*:(?!:)")
+_SIGNALS_LABEL = re.compile(r"^\s*(?:signals|Q_SIGNALS)\s*:")
+_CLASS_KEY = re.compile(r"\b(class|struct)\b")
+
 
 @dataclass
 class FileResult:
@@ -83,18 +90,25 @@ class FileResult:
     first_class_line: int = -1
     uses_tr_include: bool = False
     bases: list[tuple[str, str]] = field(default_factory=list)  # (class, replaced base)
+    out_of_line: list[str] = field(default_factory=list)  # classes whose constructors are defined elsewhere
 
 
 class ClassRewriter:
-    def __init__(self, src: Source, rel: str, cls: dict, report: Report, uses_tr: bool):
+    def __init__(self, src: Source, rel: str, cls: dict, report: Report, uses_tr: bool, static_meta: str | None = None):
         self.src = src
         self.rel = rel
         self.cls = cls
         self.name = cls["className"]
         self.report = report
         self.uses_tr = uses_tr
+        self.static_meta = static_meta  # why the class needs the tier B opt-in, or None
         self.class_annotations: list[str] = []
         self.base: str | None = None
+        self.object_line: int | None = None  # where Q_OBJECT was: generated members go here
+        self.interfaces: list[str] = []
+        self.ctor_count = 0  # constructors declared in the class body
+        self.ctor_declared_only = False  # at least one is defined outside the class
+        self.using_line: int | None = None
 
     # --- locating ---------------------------------------------------------
 
@@ -153,9 +167,13 @@ class ClassRewriter:
                                "class templates cannot carry Q_OBJECT; port by hand")
             return False
         is_object = bool(self.cls.get("object"))
-        is_gadget = bool(self.cls.get("gadget"))
-        self._macros(is_object, is_gadget)
+        if self.cls.get("gadget"):
+            self.report.manual(self.rel, self.head_line + 1, "Q_GADGET",
+                               f"`{self.name}`: reflect-moc has no gadget annotation; Q_GADGET needs moc")
+            return False
+        self._macros()
         self._sections()
+        self._constructors()
         for sig in _dedupe(self.cls.get("signals", [])):
             self._signal(sig)
         overloaded = _overloads(self.cls.get("signals", []))
@@ -175,14 +193,13 @@ class ClassRewriter:
         for enum in self.cls.get("enums", []):
             self._enum(enum)
         self._class_info()
-        if is_gadget:
-            self.class_annotations.insert(0, syntax.GADGET)
         if is_object:
             self._base()
+        self._generated_members()
         self._class_annotations()
         return True
 
-    def _macros(self, is_object: bool, is_gadget: bool) -> None:
+    def _macros(self) -> None:
         for i in self.members:
             if i in self.src.deleted:
                 continue
@@ -191,18 +208,16 @@ class ClassRewriter:
                 continue
             macro = m.group(1)
             end = self._macro_end(i, m.end())
-            if macro in ("Q_OBJECT", "Q_GADGET", "Q_GADGET_EXPORT"):
-                if macro == "Q_OBJECT":
-                    for extra in syntax.CLASS_BODY_LINES:
-                        self.src.insert_before(i, indent_of(self.src.lines[i]) + extra.format(cls=self.name))
-                    for extra in syntax.AFTER_CLASS_LINES:
-                        self.src.insert_before(self.close_line + 1, extra.format(cls=self.name))
-                if macro == "Q_OBJECT" and self.uses_tr:
+            if macro == "Q_OBJECT":
+                self.object_line = i
+                if self.uses_tr:
                     self.src.replace(i, indent_of(self.src.lines[i]) + syntax.TR_FUNCTIONS.format(cls=self.name))
                     self.report.auto(self.rel, i + 1, "Q_OBJECT", "replaced by Q_DECLARE_TR_FUNCTIONS: the class calls tr()")
                 else:
                     self._delete_span(i, end)
                     self.report.auto(self.rel, i + 1, macro)
+            elif macro in ("Q_GADGET", "Q_GADGET_EXPORT"):
+                continue  # a gadget never gets here (run() reports it)
             elif macro == "Q_PROPERTY":
                 self._delete_span(i, end)
             elif macro == "Q_CLASSINFO":
@@ -210,13 +225,8 @@ class ClassRewriter:
                 self._delete_span(i, end)
                 self.report.auto(self.rel, i + 1, "Q_CLASSINFO")
             elif macro == "Q_INTERFACES":
-                names = " ".join(self._macro_args(i, end)).split()
-                for n in names:
-                    self.class_annotations.append(syntax.interface(n))
+                self.interfaces += " ".join(self._macro_args(i, end)).split()
                 self._delete_span(i, end)
-                self.report.partial(self.rel, i + 1, "Q_INTERFACES",
-                                    "became an interface annotation; qobject_cast to the interface needs "
-                                    "qt_metacast to answer its IID")
             elif macro in ("Q_ENUM", "Q_FLAG", "Q_ENUMS", "Q_FLAGS"):
                 self._delete_span(i, end)
             elif macro in QML_MACROS or macro in NOT_MOC or macro.startswith("Q_DECL_"):
@@ -411,13 +421,11 @@ class ClassRewriter:
             return
         fields: list[tuple[str, str]] = []
         if (read or member) != name:
-            fields.append(("name", f'"{name}"'))
+            unsupported.append(f"NAME (the property is named `{read or member}`)")
         for key in ("write", "notify", "reset"):
             if prop.get(key):
-                fields.append((key, f'"{prop[key]}"'))
-        for key in ("constant", "final", "required"):
-            if prop.get(key):
-                fields.append((key, "true"))
+                fields.append((key, prop[key]))
+        unsupported += [key.upper() for key in _PROPERTY_FLAGS if prop.get(key)]
         text = self.src.lines[target].rstrip("\r\n")
         self.src.replace(target, indent_of(text) + syntax.property(fields) + " " + text.lstrip())
         if unsupported:
@@ -443,7 +451,6 @@ class ClassRewriter:
     def _enum(self, enum: dict) -> None:
         is_flag = bool(enum.get("isFlag"))
         target = enum.get("alias") or enum["name"]
-        flags_name = enum["name"] if is_flag and enum.get("alias") else None
         construct = "Q_FLAG" if is_flag else "Q_ENUM"
         rx = re.compile(rf"\benum\b(\s+(?:class|struct)\b)?(\s*)(?={re.escape(target)}\b)")
         for i in self.members:
@@ -453,7 +460,7 @@ class ClassRewriter:
             if m:
                 text = self.src.lines[i].rstrip("\r\n")
                 key_end = m.end(1) if m.group(1) else m.start() + len("enum")
-                self.src.replace(i, text[:key_end] + " " + syntax.enum(is_flag, flags_name) + " " + text[m.end():])
+                self.src.replace(i, text[:key_end] + " " + syntax.enum(is_flag) + " " + text[m.end():])
                 self.report.partial(self.rel, i + 1, construct,
                                     f"`{target}` annotated; QMetaEnum::fromType and enum names in QDebug/QVariant "
                                     "need the qt_getEnumMetaObject friend that Q_ENUM declared")
@@ -483,13 +490,124 @@ class ClassRewriter:
         self.report.manual(self.rel, self.head_line + 1, "base class", f"could not find base `{base}` in the head")
 
     def _inherited_constructors(self, base: str) -> None:
+        """`using Base::Base;` names a direct base. A class with no constructor of its own
+        gets a forwarding one instead: an inherited constructor has no body to call bind() in."""
         rx = re.compile(rf"^(\s*)using\s+{re.escape(base)}\s*::\s*{re.escape(base.split('::')[-1])}\s*;")
         for i in self.members:
             m = rx.match(self.src.blank_lines[i])
             if m:
                 text = self.src.lines[i].rstrip("\r\n")
-                self.src.replace(i, m.group(1) + syntax.object_base_using(base) + text[m.end():])
-                self.report.auto(self.rel, i + 1, "inherited constructors")
+                self.using_line = i
+                if self.ctor_count:
+                    new = syntax.object_base_using(base)
+                    self.report.auto(self.rel, i + 1, "inherited constructors")
+                else:
+                    new = syntax.forwarding_constructor(self.name, base)
+                    self.report.auto(self.rel, i + 1, "inherited constructors",
+                                     "replaced by a forwarding constructor that calls bind()")
+                self.src.replace(i, m.group(1) + new + text[m.end():])
+
+    # --- constructors and generated members ---------------------------------
+
+    def _constructors(self) -> None:
+        """bind(); in each constructor defined in the class body, and the count of constructors."""
+        ctor = re.compile(rf"(?<![\w~:.>]){re.escape(self.name)}\s*\(")
+        edits = ctors.Edits(self.src)
+        for i in self.members:
+            if i in self.src.deleted:
+                continue
+            start = edits.starts[i - 1] if i else 0
+            m = ctor.match(edits.blanked, start + len(indent_of(self.src.blank_lines[i]))) or self._after_specifiers(
+                ctor, edits.blanked, start, i)
+            if not m:
+                continue
+            close = matching(edits.blanked, m.end() - 1)
+            if close < 0 or ctors.is_copy_or_move(edits.blanked[m.end() : close], self.name):
+                continue
+            kind, pos = ctors.tail(edits.blanked, close)
+            if kind == ctors.DELETED:
+                continue
+            self.ctor_count += 1
+            if kind == ctors.DECLARATION:
+                self.ctor_declared_only = True
+            elif kind == ctors.DEFAULTED:
+                edits.replace_default(pos)
+            elif not ctors.already_binds(edits.blanked, pos):
+                edits.bind_after_brace(pos)
+        for line in edits.apply():
+            self.report.auto(self.rel, line, "constructor", "bind() added")
+
+    @staticmethod
+    def _after_specifiers(ctor: re.Pattern, blanked: str, start: int, i: int):
+        """`explicit` / `constexpr` / `inline` before the constructor's name."""
+        lead = re.compile(r"\s*(?:(?:explicit|constexpr|inline|Q_INVOKABLE)\b\s*)+")
+        m = lead.match(blanked, start)
+        return ctor.match(blanked, m.end()) if m else None
+
+    def _access_at(self, line: int) -> str:
+        """The access specifier in force at member line `line`."""
+        head = _CLASS_KEY.search(self.src.blank_lines[self.head_line])
+        access = "private" if head and head.group(1) == "class" else "public"
+        for i in self.members:
+            if i >= line:
+                break
+            if i in self.src.deleted:
+                continue
+            m = _ACCESS_LABEL.match(self.src.blank_lines[i])
+            if m:
+                access = m.group(1)
+            elif _SIGNALS_LABEL.match(self.src.blank_lines[i]):
+                access = "public"
+        return access
+
+    def _next_label(self, line: int) -> tuple[int, str] | None:
+        """The access specifier that ends the run of members starting after `line`, if the run
+        reaches one before any other member: (its line, its access)."""
+        for i in self.members:
+            if i <= line or i in self.src.deleted or not self.src.blank_lines[i].strip():
+                continue
+            m = _ACCESS_LABEL.match(self.src.blank_lines[i])
+            if m:
+                return i, m.group(1)
+            if _SIGNALS_LABEL.match(self.src.blank_lines[i]):
+                return i, "public"
+            if not _MACRO_LINE.match(self.src.blank_lines[i]):
+                return None
+        return None
+
+    def _generated_members(self) -> None:
+        """What Q_OBJECT's expansion carried that has no annotation: the tier B opt-in, the
+        interface metacast and, for a class with no constructor, one that binds."""
+        if self.object_line is None:
+            return
+        lines: list[str] = []
+        if self.static_meta:
+            lines.append(syntax.STATIC_META_OBJECT_DECLARATION)
+            self.src.insert_before(self.close_line + 1, syntax.STATIC_META_OBJECT_DEFINITION.format(cls=self.name))
+            self.report.auto(self.rel, self.head_line + 1, "static metaobject opt-in", self.static_meta)
+        if self.interfaces and self.base:
+            lines += syntax.interface_metacast(self.base, self.interfaces)
+            self.report.auto(self.rel, self.head_line + 1, "Q_INTERFACES", "qt_metacast override answers "
+                             + ", ".join(self.interfaces))
+        if not self.ctor_count and self.using_line is None:
+            lines.append(syntax.default_constructor(self.name))
+            self.report.auto(self.rel, self.head_line + 1, "constructor", "default constructor with bind() added")
+        if not lines:
+            return
+        i = self.object_line
+        access = self._access_at(i)
+        pad = indent_of(self.src.lines[i])
+        label_pad = indent_of(self.src.lines[self.head_line])
+        following = self._next_label(i)
+        if access == "public":
+            at, before, after = i, [], []
+        elif following and following[1] == "public":
+            at, before, after = following[0] + 1, [], []  # the next label is public: join its run
+        else:
+            at, before = i, [label_pad + "public:"]
+            after = [] if following else [label_pad + access + ":"]
+        for line in before + [pad + line for line in lines] + after:
+            self.src.insert_before(at, line)
 
     def _class_annotations(self) -> None:
         if not self.class_annotations:
@@ -519,12 +637,17 @@ def _overloads(signals: list[dict]) -> list[tuple[str, int]]:
     return [(name, lines[1]) for name, lines in by_name.items() if len(lines) > 1]
 
 
-def rewrite_classes(src: Source, rel: str, classes: list[dict], report: Report, uses_tr) -> FileResult:
+def rewrite_classes(src: Source, rel: str, classes: list[dict], report: Report, uses_tr,
+                    static_meta: dict[str, str] | None = None) -> FileResult:
+    """static_meta maps a class name to the reason it needs the tier B opt-in."""
     result = FileResult()
+    static_meta = static_meta or {}
     for cls in classes:
-        rewriter = ClassRewriter(src, rel, cls, report, uses_tr(cls["className"]))
+        rewriter = ClassRewriter(src, rel, cls, report, uses_tr(cls["className"]), static_meta.get(cls["className"]))
         if rewriter.run():
             result.migrated_classes.append(cls["className"])
+            if rewriter.ctor_declared_only:
+                result.out_of_line.append(cls["className"])
             if result.first_class_line < 0 or rewriter.head_line < result.first_class_line:
                 result.first_class_line = rewriter.head_line
             result.uses_tr_include |= rewriter.uses_tr and bool(cls.get("object"))

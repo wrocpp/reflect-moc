@@ -8,7 +8,7 @@ import re
 import shutil
 from dataclasses import dataclass
 
-from . import cmake, qml, syntax
+from . import cmake, ctors, optin, qml, syntax
 from .classes import rewrite_classes
 from .moc import JsonProvider
 from .report import Report, render
@@ -87,7 +87,7 @@ def migrate(src_root: str, provider: JsonProvider, options: Options, dst_root: s
 
     sources = {rel: Source(rel, t) for rel, t in cxx.items()}
     qml_classes: list[tuple[str, dict]] = []
-    bases: list[tuple[str, str]] = []
+    per_file: list[tuple[str, list[dict]]] = []
     for rel in sorted(cxx):
         if not _MOC_MARKER.search(cxx[rel]):
             continue
@@ -98,10 +98,17 @@ def migrate(src_root: str, provider: JsonProvider, options: Options, dst_root: s
         classes = [c for c in data.get("classes", []) if c.get("object") or c.get("gadget")]
         if any(c.get("namespace") for c in data.get("classes", [])):
             report.manual(rel, 0, "Q_NAMESPACE", "namespace meta-objects are not supported")
-        if not classes:
-            continue
+        if classes:
+            per_file.append((rel, classes))
+    all_classes = [c for _, classes in per_file for c in classes]
+    static_meta = optin.required(list(blanked.values()), all_classes)
+
+    bases: list[tuple[str, str]] = []
+    migrated: list[str] = []
+    declared_only: list[tuple[str, str]] = []
+    for rel, classes in per_file:
         src = sources[rel]
-        result = rewrite_classes(src, rel, classes, report, uses_tr)
+        result = rewrite_classes(src, rel, classes, report, uses_tr, static_meta)
         if result.migrated_classes:
             includes = [syntax.HEADER_INCLUDE]
             if result.uses_tr_include:
@@ -110,10 +117,19 @@ def migrate(src_root: str, provider: JsonProvider, options: Options, dst_root: s
             report.auto(rel, 0, "reflect-moc include")
         qml_classes += [(rel, c) for c in classes]
         bases += result.bases
+        migrated += result.migrated_classes
+        declared_only += [(rel, name) for name in result.out_of_line]
 
+    bound: dict[str, int] = {}
     for rel, src in sources.items():
         sweep(src, rel, report)
         rewrite_base_initializers(src, rel, bases, report)
+        for cls, n in ctors.bind_out_of_line(src, rel, migrated, report).items():
+            bound[cls] = bound.get(cls, 0) + n
+    for rel, cls in declared_only:
+        if not bound.get(cls):
+            report.manual(rel, 0, "constructor", f"`{cls}` declares a constructor whose definition was not found; "
+                          "add `bind();` to its body")
 
     new_files: dict[str, str] = {}
     module = qml.find_module(cmakes)

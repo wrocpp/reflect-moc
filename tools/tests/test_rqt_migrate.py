@@ -62,6 +62,12 @@ class Rewrites(unittest.TestCase):
         self.assertLine(self.header, "    Q_DECLARE_TR_FUNCTIONS(Counter)")
         self.assertIn(syntax.TR_INCLUDE, self.header)
 
+    def test_capability_header_is_the_qt_layer_umbrella(self):
+        self.assertEqual(syntax.HEADER_INCLUDE, "#include <reflect_moc/qt/qt.hpp>")
+
+    def test_capability_constructor_body_binds_the_class(self):
+        self.assertIn("    : rqt::Object<QObject>(parent), m_value(start)\n{\n    bind();\n}", self.source)
+
     def test_capability_reflect_moc_include_follows_the_last_include(self):
         lines = self.header.splitlines()
         self.assertEqual(lines[lines.index("#include <QString>") + 1], syntax.HEADER_INCLUDE)
@@ -102,8 +108,17 @@ class Rewrites(unittest.TestCase):
                         '    [[=rqt::property{.write = "setValue", .notify = "valueChanged", .reset = "reset"}]] '
                         "int value() const { return m_value; }")
 
-    def test_capability_property_named_unlike_its_accessor_carries_name(self):
-        self.assertLine(self.header, '    [[=rqt::property{.name = "enabled", .constant = true}]] bool isEnabled() const;')
+    def test_limit_property_named_unlike_its_accessor_is_exposed_under_the_accessor_name(self):
+        self.assertLine(self.header, "    [[=rqt::property{}]] bool isEnabled() const;")
+        detail = " ".join(i.detail for i in items(self.result, "Q_PROPERTY", PARTIAL))
+        self.assertIn("NAME (the property is named `isEnabled`)", detail)
+        self.assertIn("CONSTANT", detail)
+
+    def test_capability_property_text_is_written_as_string_literals(self):
+        self.assertNotIn("define_static_string", self.header)
+        self.assertNotIn(".name =", self.header)
+        self.assertNotIn(".constant =", self.header)
+        self.assertNotIn(".final =", self.header)
 
     def test_capability_multi_line_q_property_is_removed_whole(self):
         self.assertNotIn("Q_PROPERTY", self.header)
@@ -111,15 +126,20 @@ class Rewrites(unittest.TestCase):
         self.assertLine(self.header, '    [[=rqt::property{.write = "setRatio"}]] double ratio() const;')
 
     def test_capability_member_property_annotates_the_data_member(self):
-        self.assertLine(self.header, '    [[=rqt::property{.name = "label", .notify = "labelChanged"}]] QString m_label;')
+        self.assertLine(self.header, '    [[=rqt::property{.notify = "labelChanged"}]] QString m_label;')
 
     def test_capability_q_enum_annotates_the_enum(self):
         self.assertNotIn("Q_ENUM", self.header)
         self.assertLine(self.header, "    enum class [[=rqt::enum_]] Mode { Up, Down };")
 
+    def test_capability_enum_attribute_goes_before_the_name(self):
+        for line in self.header.splitlines():
+            if "rqt::enum_" in line or "rqt::flag" in line:
+                self.assertRegex(line, r"enum (class )?\[\[=rqt::(enum_|flag)\]\] \w+")
+
     def test_capability_q_flag_annotates_the_enum_behind_the_alias(self):
         self.assertNotIn("Q_FLAG(", self.header)
-        self.assertLine(self.header, '    enum [[=rqt::flag{"Options"}]] Option { None = 0, Wrap = 1, Clamp = 2 };')
+        self.assertLine(self.header, "    enum [[=rqt::flag]] Option { None = 0, Wrap = 1, Clamp = 2 };")
         self.assertLine(self.header, "    Q_DECLARE_FLAGS(Options, Option)")
 
     def test_capability_q_classinfo_becomes_class_annotation_with_escapes_kept(self):
@@ -151,6 +171,8 @@ class Rewrites(unittest.TestCase):
     def test_capability_cmake_turns_automoc_off_and_adds_reflection(self):
         self.assertNotIn("AUTOMOC ON", self.cmake)
         self.assertLine(self.cmake, "set_target_properties(rewrites PROPERTIES AUTOMOC OFF)")
+        self.assertLine(self.cmake, "set(CMAKE_CXX_STANDARD 26)")
+        self.assertLine(self.cmake, "set(CMAKE_CXX_EXTENSIONS OFF)")
         self.assertLine(self.cmake, "add_compile_definitions(QT_NO_KEYWORDS)")
         self.assertLine(self.cmake, "add_compile_options($<$<COMPILE_LANGUAGE:CXX>:-freflection>)")
         self.assertLine(self.cmake, "include_directories(${CMAKE_CURRENT_SOURCE_DIR}/../include)")
@@ -210,14 +232,18 @@ class Reports(unittest.TestCase):
     def test_limit_invokable_constructor_reported_once(self):
         self.assertEqual(len(items(self.result, "Q_INVOKABLE constructor", MANUAL)), 1)
 
-    def test_capability_q_gadget_becomes_class_annotation(self):
+    def test_limit_q_gadget_left_in_place_and_reported(self):
         header = self.result.files["gadget.h"]
-        self.assertIn("struct [[=rqt::gadget]] Point", header)
-        self.assertNotIn("    Q_GADGET", header.splitlines())
+        self.assertIn("    Q_GADGET", header.splitlines())
+        self.assertNotIn("rqt::gadget", header)
+        self.assertIn("no gadget annotation", self.detail("Q_GADGET", MANUAL))
 
-    def test_capability_q_interfaces_becomes_class_annotation_reported_partial(self):
-        self.assertIn("class [[=rqt::interface{^^Shape}]] Circle", self.result.files["gadget.h"])
-        self.detail("Q_INTERFACES", PARTIAL)
+    def test_capability_q_interfaces_becomes_a_metacast_override(self):
+        header = self.result.files["gadget.h"]
+        self.assertIn("    void *qt_metacast(const char *name) override", header.splitlines())
+        self.assertIn("qobject_interface_iid<Shape *>()", header)
+        self.assertNotIn("rqt::interface", header)
+        self.assertNotIn("    Q_INTERFACES(Shape)", header.splitlines())
 
     def test_limit_qt_wrap_cpp_reported(self):
         self.detail("CMake: qt_wrap_cpp", MANUAL)
@@ -260,19 +286,94 @@ class Qml(unittest.TestCase):
         self.assertIn("    URI Demo NO_GENERATE_QMLTYPES", self.result.files["CMakeLists.txt"].splitlines())
 
 
+class Binding(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.result = run_fixture("binding")
+        cls.header = cls.result.files["binding.h"]
+        cls.source = cls.result.files["binding.cpp"]
+
+    def body(self, name: str) -> str:
+        """The text of `class <name> ... };` in the migrated header."""
+        start = self.header.index(f"class {name} ")
+        return self.header[start : self.header.index("\n};", start)]
+
+    def test_capability_class_without_constructor_gets_a_forwarding_one_that_binds(self):
+        self.assertIn("template <class... Args> explicit Quiet(Args &&...args) : rqt::Object<QObject>"
+                      "(std::forward<Args>(args)...) { bind(); }", self.body("Quiet"))
+        self.assertNotIn("using ", self.body("Quiet"))
+
+    def test_capability_derived_class_forwards_to_the_new_direct_base(self):
+        self.assertIn("explicit Child(Args &&...args) : rqt::Object<Plain>(std::forward<Args>(args)...) { bind(); }",
+                      self.body("Child"))
+
+    def test_capability_inline_constructors_bind_first(self):
+        body = self.body("Inline")
+        self.assertIn("explicit Inline(QObject *parent = nullptr) : rqt::Object<QObject>(parent) { bind(); }", body)
+        self.assertIn("    {\n        bind();\n        m_v += 1;\n    }", body)
+
+    def test_limit_deleted_copy_constructor_is_left_alone(self):
+        self.assertIn("    Inline(const Inline &) = delete;", self.body("Inline").splitlines())
+
+    def test_capability_defaulted_constructor_gets_a_body(self):
+        self.assertIn("    Defaulted() { bind(); }", self.body("Defaulted").splitlines())
+
+    def test_capability_class_with_no_constructor_gets_a_public_default_one(self):
+        lines = self.body("Bare").splitlines()
+        self.assertEqual(lines[lines.index("    Bare() { bind(); }") - 1], "public:")
+        self.assertEqual(lines[lines.index("    Bare() { bind(); }") + 1], "private:")
+
+    def test_capability_out_of_line_constructors_bind(self):
+        self.assertIn("    : rqt::Object<QObject>(parent)\n{\n    bind();\n}", self.source)
+        self.assertIn("rqt::Object<QObject>(nullptr) { bind(); (void)first; (void)second; }", self.source)
+
+    def test_capability_generated_members_join_the_following_public_label(self):
+        self.assertNotIn("public:\n    static QMetaObject const &staticMetaObject;\npublic:", self.header)
+
+    def test_capability_qobject_cast_target_gets_the_opt_in(self):
+        self.assertIn("    static QMetaObject const &staticMetaObject;", self.body("Casted").splitlines())
+        self.assertIn("inline RQT_STATIC_META_OBJECT(Casted);", self.header.splitlines())
+
+    def test_capability_pointer_to_member_connect_sender_gets_the_opt_in(self):
+        self.assertIn("inline RQT_STATIC_META_OBJECT(Linked);", self.header.splitlines())
+
+    def test_capability_class_scoped_static_metaobject_use_gets_the_opt_in(self):
+        self.assertIn("inline RQT_STATIC_META_OBJECT(Meta);", self.header.splitlines())
+
+    def test_capability_class_used_as_a_property_type_gets_the_opt_in(self):
+        self.assertIn("inline RQT_STATIC_META_OBJECT(Plain);", self.header.splitlines())
+
+    def test_capability_class_nothing_refers_to_stays_without_the_opt_in(self):
+        self.assertNotIn("staticMetaObject", self.body("Quiet"))
+        self.assertNotIn("RQT_STATIC_META_OBJECT(Quiet)", self.header)
+
+    def test_capability_opt_in_reasons_are_reported(self):
+        reasons = {i.detail for i in items(self.result, "static metaobject opt-in")}
+        self.assertIn("qobject_cast", reasons)
+        self.assertIn("pointer-to-member signal", reasons)
+
+    def test_capability_interface_metacast_answers_the_interface_after_the_base(self):
+        body = self.body("Circle")
+        self.assertLess(body.index("rqt::Object<QObject>::qt_metacast(name)"), body.index("qobject_interface_iid"))
+
+    def test_capability_every_constructor_of_every_class_is_bound(self):
+        self.assertEqual(self.result.report.of_status(MANUAL), [])
+
+
 class Syntax(unittest.TestCase):
     def test_capability_target_spelling_changes_in_one_place(self):
         with mock.patch.object(syntax, "SIGNAL", "RQT_SIGNAL"), \
+             mock.patch.object(syntax, "BIND", "rqt_bind();"), \
              mock.patch.object(syntax, "object_base", lambda b: f"rqt::QtObject<{b}>"), \
-             mock.patch.object(syntax, "CLASS_BODY_LINES", ["static QMetaObject const& staticMetaObject;"]), \
-             mock.patch.object(syntax, "AFTER_CLASS_LINES", ["RQT_DEFINE({cls})"]):
-            result = run_fixture("rewrites")
-        header = result.files["counter.h"]
-        self.assertIn("    RQT_SIGNAL void valueChanged(int value)", header)
+             mock.patch.object(syntax, "STATIC_META_OBJECT_DECLARATION", "static QMetaObject const& meta;"), \
+             mock.patch.object(syntax, "STATIC_META_OBJECT_DEFINITION", "RQT_DEFINE({cls});"):
+            result = run_fixture("binding")
+        header = result.files["binding.h"]
+        self.assertIn("    static QMetaObject const& meta;", header.splitlines())
         self.assertIn(": public rqt::QtObject<QObject>", header)
-        self.assertIn("    static QMetaObject const& staticMetaObject;", header.splitlines())
-        lines = header.splitlines()
-        self.assertEqual(lines[lines.index("};") + 1], "RQT_DEFINE(Counter)")
+        self.assertIn("{ rqt_bind(); }", header)
+        self.assertIn("RQT_DEFINE(Casted);", header.splitlines())
+        self.assertIn("RQT_SIGNAL void changed(int value)", header)
 
 
 class Text(unittest.TestCase):

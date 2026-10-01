@@ -1,14 +1,14 @@
 """Every spelling rqt-migrate emits, in one place.
 
-The reflect-moc Qt syntax is provisional until include/reflect_moc/qt/README.md
-fixes it. When it changes, change it here and regenerate the ported examples;
-no other module spells reflect-moc C++ or CMake.
+The spellings follow include/reflect_moc/qt/README.md. When the library's
+syntax changes, change it here and regenerate the ported examples; no other
+module spells reflect-moc C++ or CMake.
 """
 
 from __future__ import annotations
 
 # The header every migrated header includes.
-HEADER_INCLUDE = "#include <reflect_moc/qt.hpp>"
+HEADER_INCLUDE = "#include <reflect_moc/qt/qt.hpp>"
 
 # Q_OBJECT also declared tr() with the class name as translation context. A
 # class whose own code calls tr() gets this instead, so its context is kept.
@@ -17,26 +17,47 @@ TR_INCLUDE = "#include <QtCore/qcoreapplication.h>"
 
 
 def object_base(qt_base: str) -> str:
-    """The base that replaces a Q_OBJECT class's first base (a mixin, not CRTP)."""
+    """The base that replaces a Q_OBJECT class's first base (a mixin on the Qt base, not CRTP)."""
     return f"rqt::Object<{qt_base}>"
 
 
 def object_base_using(qt_base: str) -> str:
-    """Replaces `using QObject::QObject;`: inheriting constructors must name a direct base."""
+    """Replaces `using QObject::QObject;` when the class has a constructor of its own."""
     return f"using {object_base(qt_base)}::Object;"
 
 
-# Per-class lines some base shapes need (spike 07's non-template base needs a
-# staticMetaObject declaration in the class and its definition after it, for
-# qobject_cast and pointer-to-member connect). {cls} is the class name. The
-# first list replaces the Q_OBJECT line; the second follows the class's `};`.
-CLASS_BODY_LINES: list[str] = []
-AFTER_CLASS_LINES: list[str] = []
+# A class is bound to its meta-object by a constructor body that calls bind()
+# (README "Binding the class to the instance", E3). The most derived
+# constructor body wins, so every migrated class needs one.
+BIND = "bind();"
+
+
+def forwarding_constructor(cls: str, qt_base: str) -> str:
+    """Replaces `using Base::Base;` in a class with no constructor of its own.
+
+    An inherited constructor has no body, so it cannot call bind(). The
+    forwarding constructor takes every argument list the base accepts.
+    """
+    return (f"template <class... Args> explicit {cls}(Args &&...args) : {object_base(qt_base)}"
+            f"(std::forward<Args>(args)...) {{ {BIND} }}")
+
+
+def default_constructor(cls: str) -> str:
+    """For a class with no constructor at all: the implicit one cannot call bind()."""
+    return f"{cls}() {{ {BIND} }}"
+
+
+# The optional tier B opt-in (README "Two tiers"): stock qobject_cast,
+# pointer-to-member and functor QObject::connect, qmlRegisterType<T> and
+# `T::staticMetaObject` need it. The first goes in the class body (public), the
+# second follows the class; it is inline because a header's definition is
+# compiled into every translation unit that includes it.
+STATIC_META_OBJECT_DECLARATION = "static QMetaObject const &staticMetaObject;"
+STATIC_META_OBJECT_DEFINITION = "inline RQT_STATIC_META_OBJECT({cls});"
 
 SIGNAL = "[[=rqt::signal]]"
 SLOT = "[[=rqt::slot]]"
 INVOKABLE = "[[=rqt::invokable]]"
-GADGET = "[[=rqt::gadget]]"
 
 
 def signal_body(arg_names: list[str]) -> str:
@@ -44,30 +65,31 @@ def signal_body(arg_names: list[str]) -> str:
     return "{ rqt::emit{this}(" + ", ".join(arg_names) + "); }"
 
 
-def enum(is_flag: bool, flags_name: str | None) -> str:
+def enum(is_flag: bool) -> str:
     """The annotation on the enum a Q_ENUM / Q_FLAG named.
 
-    Q_FLAG(Options) names the QFlags alias; the annotation goes on the enum
-    behind it and carries the alias name, which reflection cannot recover.
+    It goes BEFORE the name: `enum class [[=rqt::enum_]] Mode`. Q_FLAG(Options)
+    names the QFlags alias, and the annotation goes on the enum behind it; the
+    library has no field for the alias name.
     """
-    if not is_flag:
-        return "[[=rqt::enum_]]"
-    if flags_name:
-        return f'[[=rqt::flag{{"{flags_name}"}}]]'
-    return "[[=rqt::flag]]"
+    return "[[=rqt::flag]]" if is_flag else "[[=rqt::enum_]]"
+
+
+# The fields of rqt::property. Q_PROPERTY attributes outside this list (NAME
+# differing from the accessor, FINAL, CONSTANT, REQUIRED, ...) have no field.
+PROPERTY_FIELDS = ("read", "write", "notify", "reset")
 
 
 def property(fields: list[tuple[str, str]]) -> str:
     """The annotation on a property's READ accessor or MEMBER data member.
 
-    fields is an ordered list of (designator, C++ value) pairs, e.g.
-    [("write", '"setValue"'), ("notify", '"valueChanged"')]. The names are
-    plain string literals, which GCC 16.2 accepts in an annotation and clang
-    rejects (spike 02); for clang, wrap them in std::define_static_string here.
+    fields is an ordered list of (designator, text) pairs, e.g.
+    [("write", "setValue"), ("notify", "valueChanged")]. The text is written as
+    a string literal; the library stores it as rqt::name (at most 63 characters).
     """
     if not fields:
         return "[[=rqt::property{}]]"
-    inner = ", ".join(f".{name} = {value}" for name, value in fields)
+    inner = ", ".join(f'.{name} = "{value}"' for name, value in fields)
     return f"[[=rqt::property{{{inner}}}]]"
 
 
@@ -76,9 +98,17 @@ def classinfo(name_literal: str, value_literal: str) -> str:
     return f"[[=rqt::classinfo{{{name_literal}, {value_literal}}}]]"
 
 
-def interface(name: str) -> str:
-    """A class annotation from one Q_INTERFACES entry."""
-    return f"[[=rqt::interface{{^^{name}}}]]"
+def interface_metacast(qt_base: str, interfaces: list[str]) -> list[str]:
+    """Q_INTERFACES: the qt_metacast override moc generated, answering each interface's IID.
+
+    Lines without indentation; the caller indents them.
+    """
+    lines = ["void *qt_metacast(const char *name) override", "{",
+             f"    if (void *found = {object_base(qt_base)}::qt_metacast(name))", "        return found;"]
+    for iface in interfaces:
+        lines += [f"    if (!qstrcmp(name, qobject_interface_iid<{iface} *>()))",
+                  f"        return static_cast<{iface} *>(this);"]
+    return lines + ["    return nullptr;", "}"]
 
 
 # Spellings QT_NO_KEYWORDS takes away.
@@ -126,6 +156,7 @@ CMAKE_BLOCK = """\
 set(CMAKE_AUTOMOC OFF)
 set(CMAKE_CXX_STANDARD 26)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
 add_compile_definitions(QT_NO_KEYWORDS)
 add_compile_options($<$<COMPILE_LANGUAGE:CXX>:-freflection>)
 include_directories({include_path})
