@@ -235,6 +235,7 @@ class ClassRewriter:
             self._annotate_method(slot, syntax.SLOT, "Q_SLOT", "slot")
         if self.rqt_macros:
             self._macros()
+            self._signals_after_object()
             for method in _dedupe(self.cls.get("methods", [])):
                 self._annotate_method(method, syntax.INVOKABLE, "Q_INVOKABLE", "Q_INVOKABLE")
             for ctor in _dedupe(self.cls.get("constructors", [])):
@@ -245,6 +246,17 @@ class ClassRewriter:
             self._class_info()
             self._class_annotations()
         return True
+
+    def _signals_after_object(self) -> None:
+        """A data-member signal publishes its owner through RQT_OBJECT's hidden first member, so
+        RQT_OBJECT must come before every signal in the class body."""
+        if self.signals_mode != syntax.SIGNALS_MEMBERS or self.object_line is None:
+            return
+        for sig in _dedupe(self.cls.get("signals", [])):
+            if sig.get("lineNumber", 0) - 1 < self.object_line:
+                self.report.manual(self.rel, sig.get("lineNumber", 0), "signal before RQT_OBJECT",
+                                   f"`{sig['name']}` is declared before the Q_OBJECT line; move RQT_OBJECT "
+                                   "to the top of the class body")
 
     def _macros(self) -> None:
         for i in self.members:
@@ -257,6 +269,8 @@ class ClassRewriter:
             end = self._macro_end(i, m.end())
             if self.rqt_macros and macro in ("Q_OBJECT", "Q_PROPERTY"):
                 text = self.src.lines[i].rstrip("\r\n")
+                if macro == "Q_OBJECT":
+                    self.object_line = i
                 self.src.replace(i, text.replace(macro, "RQT_" + macro[2:], 1))
                 self.report.auto(self.rel, i + 1, macro, f"RQT_{macro[2:]}")
             elif self.rqt_macros and macro == "Q_INTERFACES":

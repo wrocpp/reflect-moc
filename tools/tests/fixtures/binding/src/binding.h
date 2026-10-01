@@ -112,6 +112,16 @@ public:
     int second() const { return 2; }
 };
 
+// A signal declared before Q_OBJECT: a data-member signal needs RQT_OBJECT first.
+class Late : public QObject
+{
+public:
+signals:
+    void early(int value);
+public:
+    Q_OBJECT
+};
+
 class Quiet : public QObject
 {
     Q_OBJECT

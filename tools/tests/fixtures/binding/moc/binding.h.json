@@ -218,8 +218,35 @@
    ]
   },
   {
+   "className": "Late",
+   "lineNumber": 116,
+   "object": true,
+   "qualifiedClassName": "Late",
+   "signals": [
+    {
+     "access": "public",
+     "arguments": [
+      {
+       "name": "value",
+       "type": "int"
+      }
+     ],
+     "index": 0,
+     "lineNumber": 120,
+     "name": "early",
+     "returnType": "void"
+    }
+   ],
+   "superClasses": [
+    {
+     "access": "public",
+     "name": "QObject"
+    }
+   ]
+  },
+  {
    "className": "Quiet",
-   "lineNumber": 115,
+   "lineNumber": 125,
    "object": true,
    "qualifiedClassName": "Quiet",
    "superClasses": [

@@ -431,6 +431,18 @@ class QtlikeRqtMacros(unittest.TestCase):
         self.assertIn("    Q_INTERFACES(Shape)", result.files["gadget.h"].splitlines())
 
 
+class QtlikeSignalOrder(unittest.TestCase):
+    def test_limit_signal_declared_before_q_object_is_reported(self):
+        result = run_fixture("binding", syntax.QTLIKE, macros=syntax.MACROS_RQT)
+        found = items(result, "signal before RQT_OBJECT", MANUAL)
+        self.assertEqual([i.path for i in found], ["binding.h"])
+        self.assertIn("`early`", found[0].detail)
+
+    def test_capability_signal_after_q_object_is_not_reported(self):
+        result = run_fixture("rewrites", syntax.QTLIKE, macros=syntax.MACROS_RQT)
+        self.assertEqual(items(result, "signal before RQT_OBJECT"), [])
+
+
 class Binding(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
