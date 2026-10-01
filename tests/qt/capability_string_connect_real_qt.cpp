@@ -14,8 +14,8 @@ constexpr int kSecondValue = 9;
 
 struct Source : rqt::Object<> {
   Source() { bind(); }
-  [[= rqt::signal]] void valueChanged(int value) { rqt::emit{this}(value); }
-  [[= rqt::signal]] void done() { rqt::emit{this}(); }
+  [[= rqt::signal_function]] void valueChanged(int value) { rqt::emit{this}(value); }
+  [[= rqt::signal_function]] void done() { rqt::emit{this}(); }
   [[= rqt::slot]] void announce(int v) { valueChanged(v); }
 };
 

@@ -6,7 +6,7 @@
 
 struct Job : rqt::Object<> {
   Job() { bind(); }
-  [[= rqt::signal]] void finished() { rqt::emit{this}(); }
+  [[= rqt::signal_function]] void finished() { rqt::emit{this}(); }
   [[= rqt::slot]] void setProgress(int) {}
 };
 

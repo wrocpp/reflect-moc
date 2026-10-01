@@ -20,7 +20,7 @@ constexpr int kLevels = 3;
 struct Vehicle : rqt::Object<> {
   Vehicle() { bind(); }
   [[= rqt::property{.write = "setSpeed", .notify = "speedChanged"}]] int speed() const { return speed_; }
-  [[= rqt::signal]] void speedChanged(int speed) { rqt::emit{this}(speed); }
+  [[= rqt::signal_function]] void speedChanged(int speed) { rqt::emit{this}(speed); }
   [[= rqt::slot]] void setSpeed(int s) {
     if (s == speed_) return;
     speed_ = s;
@@ -39,7 +39,7 @@ struct Car : Vehicle {
 struct Plane : Car {
   Plane() { bind(); }
   [[= rqt::property{}]] int height = 0;
-  [[= rqt::signal]] void landed() { rqt::emit{this}(); }
+  [[= rqt::signal_function]] void landed() { rqt::emit{this}(); }
   [[= rqt::invokable]] int altitudeTwice() const { return 2 * height; }
 };
 

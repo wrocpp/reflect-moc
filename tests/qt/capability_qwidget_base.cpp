@@ -17,7 +17,7 @@ constexpr int kBadge = 4;
 struct Panel : rqt::Object<QWidget> {
   explicit Panel(QWidget* parent = nullptr) : rqt::Object<QWidget>(parent) { bind(); }
   [[= rqt::property{.write = "setBadge", .notify = "badgeChanged"}]] int badge() const { return badge_; }
-  [[= rqt::signal]] void badgeChanged(int badge) { rqt::emit{this}(badge); }
+  [[= rqt::signal_function]] void badgeChanged(int badge) { rqt::emit{this}(badge); }
   [[= rqt::slot]] void setBadge(int b) {
     if (b == badge_) return;
     badge_ = b;

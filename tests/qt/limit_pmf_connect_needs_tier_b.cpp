@@ -6,7 +6,7 @@
 
 struct Bare : rqt::Object<> {
   Bare() { bind(); }
-  [[= rqt::signal]] void changed() { rqt::emit{this}(); }
+  [[= rqt::signal_function]] void changed() { rqt::emit{this}(); }
 };
 
 void connect_without_opt_in(Bare& a, Bare& b) { QObject::connect(&a, &Bare::changed, &b, [] {}); }

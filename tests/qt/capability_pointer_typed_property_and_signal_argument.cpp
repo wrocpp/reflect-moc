@@ -27,9 +27,9 @@ struct Party : rqt::Object<> {
   [[= rqt::property{.write = "setHost", .notify = "hostChanged"}]] Person* host() const { return host_; }
   [[= rqt::property{.write = "setAnyone"}]] QObject* anyone() const { return anyone_; }
 
-  [[= rqt::signal]] void hostChanged(Person* host) { rqt::emit{this}(host); }
-  [[= rqt::signal]] void guestArrived(Person* guest) { rqt::emit{this}(guest); }
-  [[= rqt::signal]] void guestSeen(Person const* guest) { rqt::emit{this}(guest); }
+  [[= rqt::signal_function]] void hostChanged(Person* host) { rqt::emit{this}(host); }
+  [[= rqt::signal_function]] void guestArrived(Person* guest) { rqt::emit{this}(guest); }
+  [[= rqt::signal_function]] void guestSeen(Person const* guest) { rqt::emit{this}(guest); }
 
   [[= rqt::slot]] void setHost(Person* h) {
     host_ = h;

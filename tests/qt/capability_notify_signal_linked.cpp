@@ -21,8 +21,8 @@ struct Meter : rqt::Object<> {
   [[= rqt::property{.write = "setLevel", .notify = "levelChanged"}]] int level() const { return level_; }
   [[= rqt::property{.notify = "labelChanged"}]] QString label;
 
-  [[= rqt::signal]] void levelChanged(int level) { rqt::emit{this}(level); }
-  [[= rqt::signal]] void labelChanged(QString const& label) { rqt::emit{this}(label); }
+  [[= rqt::signal_function]] void levelChanged(int level) { rqt::emit{this}(level); }
+  [[= rqt::signal_function]] void labelChanged(QString const& label) { rqt::emit{this}(label); }
   [[= rqt::slot]] void setLevel(int l) {
     if (l == level_) return;
     level_ = l;

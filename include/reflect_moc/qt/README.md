@@ -7,11 +7,39 @@ Include `<reflect_moc/qt/qt.hpp>`. Everything lives in namespace `rqt`.
 
 ## Build requirements
 
-- `QT_NO_KEYWORDS` is mandatory. Qt's `emit`, `signals` and `slots` macros would
-  turn `struct emit` into `struct {`. Use `Q_EMIT` / `Q_SIGNALS` if you need Qt's own.
+- `QT_NO_KEYWORDS` is optional. The library spells `rqt::activate`, never `emit`, so Qt's
+  `emit`, `signals` and `slots` stay usable. (With `QT_NO_KEYWORDS`, `rqt::emit` remains as an alias.)
 - `CMAKE_AUTOMOC` stays OFF. The library never needs `moc`.
-- GCC 16.2 only for the signal-body form (`std::meta::current_function` and
+- GCC 16.2 only (`std::meta::current_function`, `current_class`, `offset_of` and
   `std::meta::exception` do not exist in clang-p2996).
+
+## Qt-like syntax (the main form)
+
+```cpp
+class Sensor : public QObject {
+  RQT_OBJECT                                                            // Q_OBJECT
+  RQT_PROPERTY(int level READ level WRITE setLevel NOTIFY levelChanged) // the exact Q_PROPERTY text
+ public:
+  int level() const;
+ public slots:
+  [[= rqt::slot]] void setLevel(int);
+ signals:
+  [[= rqt::names("level")]] rqt::signal<void(int)> levelChanged;        // bodyless data member
+};
+```
+
+- Signals are bodyless data members `rqt::signal<void(A...)> name;`. Stock Qt connect,
+  `QMetaMethod::fromSignal` and `QSignalSpy` accept `&Sensor::levelChanged`; call it as
+  `levelChanged(5)` or `emit levelChanged(5)`. `[[=rqt::names("a, b")]]` gives the parameter
+  names that QML handlers read (a function type has none).
+- Slots and invokables: `[[=rqt::slot]]`, `[[=rqt::invokable]]`.
+- The older body form is `[[=rqt::signal_function]] void f(int v) { rqt::activate{this}(v); }`.
+
+**Migration note.** The annotation `[[=rqt::signal]]` no longer exists: `rqt::signal` is now the class
+template of the data-member form. Write `[[=rqt::signal_function]]` for the body form, and
+`rqt::activate` (was `rqt::emit`).
+
+The sections below describe the annotation-based mixin form (`rqt::Object<B>`), which stays supported.
 
 ## Class shape
 
@@ -23,7 +51,7 @@ struct Worker : rqt::Object<QThread> {            // default base: QObject
   [[=rqt::property{.write = "setValue", .notify = "valueChanged", .reset = ""}]]
   int value() const;                               // on the GETTER: READ is implied
 
-  [[=rqt::signal]]    void valueChanged(int value) { rqt::emit{this}(value); }
+  [[= rqt::signal_function]]    void valueChanged(int value) { rqt::emit{this}(value); }
   [[=rqt::slot]]      void setValue(int);
   [[=rqt::invokable]] int  add(int);
 

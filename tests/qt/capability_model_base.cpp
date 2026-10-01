@@ -18,7 +18,7 @@ struct NameModel : rqt::Object<QAbstractListModel> {
   NameModel() { bind(); }
 
   [[= rqt::property{.notify = "countChanged"}]] int count() const { return static_cast<int>(names_.size()); }
-  [[= rqt::signal]] void countChanged(int count) { rqt::emit{this}(count); }
+  [[= rqt::signal_function]] void countChanged(int count) { rqt::emit{this}(count); }
   [[= rqt::slot]] void add(QString const& name) {
     beginInsertRows({}, count(), count());
     names_.append(name);

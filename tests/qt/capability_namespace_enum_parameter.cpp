@@ -15,7 +15,7 @@ struct Slider : rqt::Object<> {
   [[= rqt::property{.write = "setOrientation", .notify = "orientationChanged"}]] Qt::Orientation orientation() const {
     return orientation_;
   }
-  [[= rqt::signal]] void orientationChanged(Qt::Orientation o) { rqt::emit{this}(o); }
+  [[= rqt::signal_function]] void orientationChanged(Qt::Orientation o) { rqt::emit{this}(o); }
   [[= rqt::slot]] void setOrientation(Qt::Orientation o) {
     if (o == orientation_) return;
     orientation_ = o;

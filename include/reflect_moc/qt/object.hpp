@@ -195,7 +195,7 @@ bool register_namespace() {
 namespace detail {
 consteval int signal_index(info f) {
   if (kind_of(f) == method_kind::signal_ && meta::is_class_member(f)) return entry_index(meta::parent_of(f), f);
-  throw meta::exception("rqt::activate used outside a [[=rqt::signal]] member function", f);
+  throw meta::exception("rqt::activate used outside a [[=rqt::signal_function]] member function", f);
 }
 }  // namespace detail
 

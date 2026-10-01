@@ -25,6 +25,29 @@ T const* cast(QObject const* o) {
 
 namespace detail {
 
+// The pointer a caller can name for a table entry: a pointer to member function, or a pointer to the
+// data member of a signal. A private signal member has none (nullptr_t never matches).
+template <info Fn>
+constexpr auto entry_pointer() {
+  if constexpr (!is_data_signal(Fn))
+    return member_pointer<Fn>();
+  else if constexpr (meta::is_public(Fn))
+    return &[:Fn:];
+  else
+    return nullptr;
+}
+
+// A signal member's type is rqt::signal<void(A...)>; the argument check wants the function type.
+template <class F>
+struct callable_signature {
+  using type = F;
+};
+template <class S>
+  requires requires { typename S::signature; }
+struct callable_signature<S> {
+  using type = typename S::signature;
+};
+
 // The method index of a pointer to member, relative to C's meta-object chain.
 template <class C, class F>
 int method_index(F C::* pmf) {
@@ -33,8 +56,8 @@ int method_index(F C::* pmf) {
     (
         [&] {
           constexpr method_entry e = method_entries<C>[I];
-          if constexpr (!e.cloned && std::is_same_v<decltype(member_pointer<e.fn>()), F C::*>)
-            if (found < 0 && member_pointer<e.fn>() == pmf) found = static_cast<int>(I);
+          if constexpr (!e.cloned && std::is_same_v<decltype(entry_pointer<e.fn>()), F C::*>)
+            if (found < 0 && entry_pointer<e.fn>() == pmf) found = static_cast<int>(I);
         }(),
         ...);
     return found < 0 ? -1 : static_meta_object<C>.methodOffset() + found;
@@ -76,7 +99,8 @@ struct strip_const_fn<R(A...) const> {
 template <class S, class SF, class R, class RF>
 QMetaObject::Connection connect(QObject const* sender, SF S::* signal, QObject const* receiver, RF R::* slot,
                                 Qt::ConnectionType type = Qt::AutoConnection) {
-  static_assert(detail::args_prefix<SF, typename detail::strip_const_fn<RF>::type>::value,
+  static_assert(detail::args_prefix<typename detail::callable_signature<SF>::type,
+                                    typename detail::strip_const_fn<RF>::type>::value,
                 "rqt::connect: the slot's parameters must be a prefix of the signal's");
   return QMetaObject::connect(sender, detail::method_index(signal), receiver, detail::method_index(slot), type);
 }

@@ -29,7 +29,7 @@ class Window : public rqt::Object<> {
     countChanged(count_);
   }
   [[= rqt::invokable]] int secret() const { return count_ * 2; }
-  [[= rqt::signal]] void countChanged(int count) { rqt::emit{this}(count); }
+  [[= rqt::signal_function]] void countChanged(int count) { rqt::emit{this}(count); }
 
   [[= rqt::property{.notify = "countChanged"}]] int count_ = kStart;
   int loads_ = 0;

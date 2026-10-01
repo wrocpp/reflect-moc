@@ -42,16 +42,6 @@ constexpr auto member_pointer() {
   return meta::extract<F Cls::*>(Fn);
 }
 
-template <info Fn, class C, class... A>
-decltype(auto) call(C* self, A&&... a) {
-  if constexpr (meta::is_public(Fn)) {
-    return self->[:Fn:](std::forward<A>(a)...);  // default arguments apply, which a pointer to member cannot give
-  } else {
-    constexpr auto pointer = member_pointer<Fn>();
-    return (self->*pointer)(std::forward<A>(a)...);
-  }
-}
-
 template <info M, class C>
 decltype(auto) member_ref(C* self) {
   using T = typename[:meta::type_of(M):];
@@ -63,8 +53,21 @@ decltype(auto) member_ref(C* self) {
   }
 }
 
+// Calls a slot, an invokable or a signal; calling a signal data member activates it.
+template <info Fn, class C, class... A>
+decltype(auto) call(C* self, A&&... a) {
+  if constexpr (is_data_signal(Fn)) {
+    return member_ref<Fn>(self)(std::forward<A>(a)...);
+  } else if constexpr (meta::is_public(Fn)) {
+    return self->[:Fn:](std::forward<A>(a)...);  // default arguments apply, which a pointer to member cannot give
+  } else {
+    constexpr auto pointer = member_pointer<Fn>();
+    return (self->*pointer)(std::forward<A>(a)...);
+  }
+}
+
 template <info Fn, std::size_t P>
-using param_t = std::remove_cvref_t<typename[:meta::type_of(meta::parameters_of(Fn)[P]):]>;
+using param_t = std::remove_cvref_t<entry_param_t<Fn, P>>;
 
 template <info Fn, std::size_t P>
 decltype(auto) arg_at(void** args) {
@@ -75,7 +78,7 @@ decltype(auto) arg_at(void** args) {
 template <info Fn, std::size_t N, class C>
 void call_with_args(C* self, void** args) {
   [&]<std::size_t... P>(std::index_sequence<P...>) {
-    using R = typename[:meta::return_type_of(Fn):];
+    using R = entry_return_t<Fn>;
     if constexpr (std::is_void_v<R>) {
       call<Fn>(self, arg_at<Fn, P>(args)...);
     } else {
@@ -98,11 +101,13 @@ void invoke_method(D* t, int id, void** a) {
 template <class D, std::size_t I>
 bool match_signal(void** a) {
   constexpr method_entry e = method_entries<D>[I];
-  if constexpr (!e.cloned && kind_of(e.fn) == method_kind::signal_)
+  if constexpr (e.cloned || kind_of(e.fn) != method_kind::signal_)
+    return false;
+  else if constexpr (is_data_signal(e.fn))  // a private signal member has no pointer a caller could name
+    return meta::is_public(e.fn) && QtMocHelpers::indexOfMethod<decltype(&[:e.fn:])>(a, &[:e.fn:], static_cast<int>(I));
+  else
     return QtMocHelpers::indexOfMethod<decltype(member_pointer<e.fn>())>(a, member_pointer<e.fn>(),
                                                                          static_cast<int>(I));
-  else
-    return false;
 }
 
 template <class D>
@@ -148,7 +153,7 @@ void read_property(D* t, void* v) {
 template <prop_desc d, class D>
 void emit_notify(D* t) {
   if constexpr (present(d.notify)) {
-    if constexpr (arity(d.notify) == 0)
+    if constexpr (entry_arity(d.notify) == 0)
       call<d.notify>(t);
     else
       call<d.notify>(t, member_ref<d.member>(t));

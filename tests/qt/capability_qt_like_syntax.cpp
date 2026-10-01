@@ -34,8 +34,8 @@ class Counter : public QObject {
   [[= rqt::slot]] void reset() { setValue(0); }
 
  signals:
-  [[= rqt::signal]] void valueChanged(int value) { rqt::activate{this}(value); }
-  [[= rqt::signal]] void labelChanged(QString const& label) { rqt::activate{this}(label); }
+  [[= rqt::signal_function]] void valueChanged(int value) { rqt::activate{this}(value); }
+  [[= rqt::signal_function]] void labelChanged(QString const& label) { rqt::activate{this}(label); }
 
  private:
   [[= rqt::slot]] void hidden() { ++hidden_calls_; }

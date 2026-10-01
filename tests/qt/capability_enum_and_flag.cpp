@@ -23,7 +23,7 @@ struct Painter : rqt::Object<> {
   enum class [[= rqt::flag]] Edge { Left = 1, Right = 2, Top = 4 };
 
   [[= rqt::property{.write = "setMode", .notify = "modeChanged"}]] Mode mode() const { return mode_; }
-  [[= rqt::signal]] void modeChanged(Mode mode) { rqt::emit{this}(mode); }
+  [[= rqt::signal_function]] void modeChanged(Mode mode) { rqt::emit{this}(mode); }
   [[= rqt::slot]] void setMode(Mode m) {
     if (m == mode_) return;
     mode_ = m;

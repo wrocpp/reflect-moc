@@ -16,8 +16,10 @@
 namespace rqt {
 namespace meta = std::meta;
 
+// A signal declared as a function with a body: `[[=rqt::signal_function]] void f(int v) { rqt::activate{this}(v); }`.
+// (rqt::signal is the class template of the bodyless data-member form, declared below.)
 struct signal_t {};
-inline constexpr signal_t signal{};
+inline constexpr signal_t signal_function{};
 struct slot_t {};
 inline constexpr slot_t slot{};
 struct invokable_t {};
@@ -76,6 +78,20 @@ struct classinfo {
   short_text key;
   text<max_text_length> value;
 };
+
+// Parameter names of a signal data member: `[[=rqt::names("value, count")]] rqt::signal<void(int, int)> changed;`
+// (a function type has no parameter names, and QML reads them).
+struct names {
+  text<max_text_length> list;
+  template <std::size_t N>
+  constexpr names(char const (&literal)[N]) : list(literal) {}
+};
+
+// `rqt::signal<void(int)> valueChanged;` as a bodyless data member of a class with a meta-object.
+// Owner is the class being defined; the closure in Tag gives every declaration its own type, so
+// two members of the same signature stay distinct. Defined in signal.hpp.
+template <class Sig, meta::info Owner = meta::current_class(), auto Tag = [] {}>
+struct signal;
 
 // --- RQT_PROPERTY: the exact Q_PROPERTY text, parsed at compile time ------------------------
 

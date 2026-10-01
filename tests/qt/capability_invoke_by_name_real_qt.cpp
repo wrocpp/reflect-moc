@@ -21,7 +21,7 @@ struct Calc : rqt::Object<> {
   Calc() { bind(); }
   int level = 0;
   int step = 0;
-  [[= rqt::signal]] void changed() { rqt::emit{this}(); }
+  [[= rqt::signal_function]] void changed() { rqt::emit{this}(); }
   [[= rqt::slot]] void setLevel(int newLevel, int newStep = kStepDefault) {
     level = newLevel;
     step = newStep;

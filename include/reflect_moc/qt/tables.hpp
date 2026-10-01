@@ -52,7 +52,15 @@ consteval std::string qualified_name(info t) {
 // Qt's method order: every signal, then every slot, then every invokable.
 enum class method_kind { signal_, slot_, invokable_, none };
 
+// A signal declared as a bodyless data member: `rqt::signal<void(int)> valueChanged;`.
+consteval bool is_data_signal(info m) {
+  if (!meta::is_nonstatic_data_member(m)) return false;
+  info const t = meta::remove_cvref(meta::type_of(m));
+  return meta::has_template_arguments(t) && meta::template_of(t) == ^^signal;
+}
+
 consteval method_kind kind_of(info m) {
+  if (is_data_signal(m)) return method_kind::signal_;
   if (!meta::is_function(m)) return method_kind::none;
   if (has<signal_t>(m)) return method_kind::signal_;
   if (has<slot_t>(m)) return method_kind::slot_;
@@ -74,7 +82,50 @@ consteval std::size_t default_count(info fn) {
   return n;
 }
 
+// The argument types of a signal data member, read from the args_tuple alias of its type.
+consteval std::vector<info> signal_param_types(info m) {
+  info const t = meta::remove_cvref(meta::type_of(m));
+  for (auto x : meta::members_of(t, unchecked))
+    if (meta::is_type(x) && meta::has_identifier(x) && meta::identifier_of(x) == "args_tuple")
+      return meta::template_arguments_of(meta::dealias(x));
+  throw meta::exception("rqt::signal has no args_tuple", m);
+}
+
+// `[[=rqt::names("a, b")]]` on a signal data member: a function type has no parameter names.
+consteval std::string signal_parameter_name(info m, std::size_t index) {
+  if (!has<names>(m)) return {};
+  auto const annotation = get<names>(m);  // a named copy: the view must not outlive a temporary
+  std::string_view const list = annotation.list.view();
+  std::size_t begin = 0;
+  for (std::size_t i = 0; i < index; ++i) {
+    begin = list.find(',', begin);
+    if (begin == std::string_view::npos) return {};
+    ++begin;
+  }
+  std::size_t end = list.find(',', begin);
+  std::string_view item = list.substr(begin, end == std::string_view::npos ? std::string_view::npos : end - begin);
+  while (!item.empty() && item.front() == ' ') item.remove_prefix(1);
+  while (!item.empty() && item.back() == ' ') item.remove_suffix(1);
+  return std::string{item};
+}
+
+consteval std::size_t entry_arity(info fn) {
+  return is_data_signal(fn) ? signal_param_types(fn).size() : meta::parameters_of(fn).size();
+}
+
+consteval info entry_param_type(info fn, std::size_t i) {
+  return is_data_signal(fn) ? signal_param_types(fn)[i] : meta::type_of(meta::parameters_of(fn)[i]);
+}
+
+consteval info entry_return_type(info fn) { return is_data_signal(fn) ? ^^void : meta::return_type_of(fn); }
+
+consteval bool entry_is_const(info fn) { return !is_data_signal(fn) && meta::is_const(fn); }
+
 consteval void append_entries(std::vector<method_entry>& out, info fn) {
+  if (is_data_signal(fn)) {
+    out.push_back({.fn = fn, .nargs = entry_arity(fn), .cloned = false});
+    return;
+  }
   std::size_t const full = meta::parameters_of(fn).size();
   out.push_back({.fn = fn, .nargs = full, .cloned = false});
   // A non-public function has no clones: the call goes through a pointer to
@@ -142,6 +193,11 @@ consteval std::string_view param_name(info p) {
   return meta::has_identifier(p) ? meta::identifier_of(p) : std::string_view{};
 }
 
+// Name of parameter i of a table entry: the function's own, or from [[=rqt::names]] on a signal member.
+consteval std::string entry_param_name(info fn, std::size_t i) {
+  return is_data_signal(fn) ? signal_parameter_name(fn, i) : std::string{param_name(meta::parameters_of(fn)[i])};
+}
+
 // --- properties ----------------------------------------------------------------------
 
 // A reflection that stands for "none": void, which no function, member or
@@ -179,10 +235,18 @@ consteval info find_function(info cls, info anchor, std::string_view name, std::
 
 consteval std::size_t arity(info fn) { return meta::parameters_of(fn).size(); }
 
+// A NOTIFY names a signal: an annotated function or a signal data member, with at most one argument.
 consteval info resolve_notify(info cls, info anchor, std::string_view name) {
-  return find_function(
-      cls, anchor, name, "NOTIFY", [](info m) { return has<signal_t>(m) && arity(m) <= 1; },
-      "is not an rqt::signal with at most one parameter");
+  bool seen = false;
+  for (auto m : meta::members_of(cls, unchecked)) {
+    if (!meta::has_identifier(m) || meta::identifier_of(m) != name) continue;
+    if (kind_of(m) == method_kind::signal_ && entry_arity(m) <= 1) return m;
+    seen = true;
+  }
+  throw meta::exception(seen ? cat({"rqt::property NOTIFY '", name, "': is not an rqt::signal with at most one parameter"})
+                             : cat({"rqt::property NOTIFY '", name, "': no member function of that name in ",
+                                    meta::identifier_of(cls)}),
+                        anchor);
 }
 
 consteval void resolve_accessors(prop_desc& d, info cls, property const& p) {
@@ -427,10 +491,10 @@ struct string_pool {
 consteval void pool_methods(string_pool& pool, info cls) {
   for (auto e : make_method_entries(cls)) {
     pool.add(meta::identifier_of(e.fn));
-    pool.add_type(meta::return_type_of(e.fn));
-    for (auto p : meta::parameters_of(e.fn)) {
-      pool.add(param_name(p));
-      pool.add_type(meta::type_of(p));
+    pool.add_type(entry_return_type(e.fn));
+    for (std::size_t i = 0; i < entry_arity(e.fn); ++i) {
+      pool.add(entry_param_name(e.fn, i));
+      pool.add_type(entry_param_type(e.fn, i));
     }
   }
 }

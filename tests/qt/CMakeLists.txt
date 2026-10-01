@@ -43,7 +43,7 @@ set(limit_notify_names_a_non_signal_MESSAGE
 set(limit_property_write_typo_MESSAGE
   "no member function of that name in Gauge")
 set(limit_emit_outside_signal_MESSAGE
-  "rqt::activate used outside a \\[\\[=rqt::signal\\]\\] member function")
+  "rqt::activate used outside a \\[\\[=rqt::signal_function\\]\\] member function")
 set(limit_register_qml_needs_tier_b_MESSAGE
   "rqt::register_qml: the class needs the tier B opt-in")
 set(limit_inline_static_meta_object_MESSAGE

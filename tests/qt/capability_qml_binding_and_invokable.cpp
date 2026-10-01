@@ -24,7 +24,7 @@ constexpr int kAdded = 1;
 namespace app {
 struct Counter : rqt::Object<> {
   [[= rqt::property{.write = "setValue", .notify = "valueChanged"}]] int value() const { return value_; }
-  [[= rqt::signal]] void valueChanged(int value) { rqt::emit{this}(value); }
+  [[= rqt::signal_function]] void valueChanged(int value) { rqt::emit{this}(value); }
   [[= rqt::slot]] void setValue(int v) {
     if (v == value_) return;
     value_ = v;

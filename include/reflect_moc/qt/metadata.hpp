@@ -69,10 +69,16 @@ struct signature_of<R, true, A...> {
   using type = R(A...) const;
 };
 
+// The parameter and return types of a table entry, whether it is a function or a signal data member.
+template <info M, std::size_t P>
+using entry_param_t = typename[:entry_param_type(M, P):];
+
+template <info M>
+using entry_return_t = typename[:entry_return_type(M):];
+
 template <info M, std::size_t... P>
 auto signature_for(std::index_sequence<P...>)
-    -> std::type_identity<typename signature_of<typename[:meta::return_type_of(M):], meta::is_const(M),
-                                                typename[:meta::type_of(meta::parameters_of(M)[P]):]...>::type>;
+    -> std::type_identity<typename signature_of<entry_return_t<M>, entry_is_const(M), entry_param_t<M, P>...>::type>;
 
 // The function type of M cut to its first N parameters.
 template <info M, std::size_t N>
@@ -88,11 +94,10 @@ template <class Data, class D, info M, std::size_t N>
 constexpr Data function_data(unsigned flags) {
   using Params = typename Data::ParametersArray;
   constexpr Params params = []<std::size_t... P>(std::index_sequence<P...>) {
-    return Params{{{type_id<D, typename[:meta::type_of(meta::parameters_of(M)[P]):]>(),
-                    string_index<D>(param_name(meta::parameters_of(M)[P]))}...}};
+    return Params{{{type_id<D, entry_param_t<M, P>>(), string_index<D>(entry_param_name(M, P))}...}};
   }(std::make_index_sequence<N>{});
-  return Data(string_index<D>(meta::identifier_of(M)), string_index<D>(""), flags,
-              type_id<D, typename[:meta::return_type_of(M):]>(), params);
+  return Data(string_index<D>(meta::identifier_of(M)), string_index<D>(""), flags, type_id<D, entry_return_t<M>>(),
+              params);
 }
 
 template <class D, std::size_t I>

@@ -16,7 +16,7 @@ struct Gadget : rqt::Object<> {
   static QMetaObject const& staticMetaObject;
   Gadget() { bind(); }
   int value_ = 0;
-  [[= rqt::signal]] void valueChanged(int value) { rqt::emit{this}(value); }
+  [[= rqt::signal_function]] void valueChanged(int value) { rqt::emit{this}(value); }
   [[= rqt::slot]] void setValue(int v) {
     if (v == value_) return;
     value_ = v;

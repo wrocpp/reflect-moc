@@ -19,7 +19,7 @@ constexpr int kTicks = 3;
 
 struct Producer : rqt::Object<> {
   Producer() { bind(); }
-  [[= rqt::signal]] void produced(int value) { rqt::emit{this}(value); }
+  [[= rqt::signal_function]] void produced(int value) { rqt::emit{this}(value); }
   [[= rqt::slot]] void produce(int v) { produced(v); }
 };
 
@@ -38,7 +38,7 @@ struct Consumer : rqt::Object<> {
 // A QThread subclass as the reflected base: run() emits from the worker thread.
 struct Ticker : rqt::Object<QThread> {
   Ticker() { bind(); }
-  [[= rqt::signal]] void ticked(int n) { rqt::emit{this}(n); }
+  [[= rqt::signal_function]] void ticked(int n) { rqt::emit{this}(n); }
   void run() override {
     for (int i = 1; i <= kTicks; ++i) ticked(i);
   }

@@ -31,8 +31,8 @@ constexpr int kListB = 20;
 
 struct Camera : rqt::Object<> {
   Camera() { bind(); }
-  [[= rqt::signal]] void frame(QImage const& image, QList<int> const& marks) { rqt::emit{this}(image, marks); }
-  [[= rqt::signal]] void moved(shapes::Point const& to) { rqt::emit{this}(to); }
+  [[= rqt::signal_function]] void frame(QImage const& image, QList<int> const& marks) { rqt::emit{this}(image, marks); }
+  [[= rqt::signal_function]] void moved(shapes::Point const& to) { rqt::emit{this}(to); }
   [[= rqt::slot]] void shoot() {
     QImage image{kImageSide, kImageSide, QImage::Format_RGB32};
     frame(image, QList<int>{kListA, kListB});
