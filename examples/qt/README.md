@@ -46,12 +46,15 @@ $RUN examples/qt/check.sh ported                   # the same for the ported tre
 $RUN examples/qt/check_no_moc.sh                   # rebuild each ported example and fail on any moc invocation
 docker run --rm -e RQT_VARIANT=original -v $PWD:/src -w /src reflect-moc/gcc16-qt610 \
     examples/qt/check_no_moc.sh                    # positive control: must FAIL on every original
+docker run --rm -v $PWD:/src:ro -w /src reflect-moc/gcc16-qt610 \
+    sh examples/qt/check_moc_trapped.sh            # the strong proof: moc replaced by a failing trap, see below
 $RUN examples/qt/migrate.sh                        # regenerate ported/, migration.diff and unmigrated.md
 $RUN examples/qt/measure.sh                        # build time (3 runs per variant) and binary sizes
 ```
 
 - `check.sh [--record] original|ported [example...]` builds each example's app and harness with `-Wall -Wextra`, diffs the harness output against `expected_output.txt` (`--record` rewrites it; use it on `original` only), counts moc lines and warnings in the build log, and runs the app for two seconds as a smoke test. `RQT_EXAMPLES_BUILD` sets the build directory.
 - `migrate.sh [example...]` runs `tools/rqt-migrate`; `RQT_MIGRATE_FLAGS` picks the style (default `--style qtlike --signals members --macros rqt`; `--style annotations` is the mixin/annotation syntax recorded in `RESULTS.md`).
+- `check_moc_trapped.sh` is the check that does not rely on reading build logs. It replaces every `moc` in the container with a trap that records the caller and fails, then builds the four ported examples, the two demos and all library tests. It passes only if nothing but the differential test (which runs real moc on purpose, as its oracle) needs moc; that test failing to build is the positive control. **It renames the real moc, so it refuses to run outside a container**; mount the repository read-only as shown. `RQT_TRAP_QUICK=1` skips the long library-test step. It checks one platform: GCC 16.2, Qt 6.10.3, aarch64 Linux in the image.
 - `measure.sh` honours `RQT_RUNS` (default 3) and `RQT_JOBS` (default 2).
 - The tool's own unit tests need no Qt: `cd tools && python3 -m unittest discover -s tests -p 'test_*.py'`.
 
