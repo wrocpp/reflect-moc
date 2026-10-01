@@ -303,9 +303,12 @@ class Binding(unittest.TestCase):
                       "(std::forward<Args>(args)...) { bind(); }", self.body("Quiet"))
         self.assertNotIn("using ", self.body("Quiet"))
 
-    def test_capability_derived_class_forwards_to_the_new_direct_base(self):
+    def test_limit_class_derived_from_a_migrated_class_keeps_that_base(self):
+        # rqt::Object<Plain> would repeat rqt::object_tag: an ambiguous base Qt's templates cannot see through.
+        self.assertIn("class Child : public Plain", self.header)
+        self.assertNotIn("rqt::Object<Plain>", self.header)
         self.assertIn("requires rqt::forwardable<Child, Args...> "
-                      "explicit Child(Args &&...args) : rqt::Object<Plain>(std::forward<Args>(args)...) { bind(); }",
+                      "explicit Child(Args &&...args) : Plain(std::forward<Args>(args)...) { bind(); }",
                       self.body("Child"))
 
     def test_capability_inline_constructors_bind_first(self):

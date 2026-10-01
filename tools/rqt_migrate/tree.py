@@ -101,6 +101,7 @@ def migrate(src_root: str, provider: JsonProvider, options: Options, dst_root: s
         if classes:
             per_file.append((rel, classes))
     all_classes = [c for _, classes in per_file for c in classes]
+    object_names = {c["className"] for c in all_classes if c.get("object")}
     static_meta = optin.required(list(blanked.values()), all_classes)
 
     bases: list[tuple[str, str]] = []
@@ -108,7 +109,7 @@ def migrate(src_root: str, provider: JsonProvider, options: Options, dst_root: s
     declared_only: list[tuple[str, str]] = []
     for rel, classes in per_file:
         src = sources[rel]
-        result = rewrite_classes(src, rel, classes, report, uses_tr, static_meta)
+        result = rewrite_classes(src, rel, classes, report, uses_tr, static_meta, object_names)
         if result.migrated_classes:
             includes = [syntax.HEADER_INCLUDE]
             if result.uses_tr_include:

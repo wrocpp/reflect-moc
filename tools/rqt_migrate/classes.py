@@ -89,7 +89,8 @@ class FileResult:
 
 
 class ClassRewriter:
-    def __init__(self, src: Source, rel: str, cls: dict, report: Report, uses_tr: bool, static_meta: str | None = None):
+    def __init__(self, src: Source, rel: str, cls: dict, report: Report, uses_tr: bool, static_meta: str | None = None,
+                 object_names: set[str] | None = None):
         self.src = src
         self.rel = rel
         self.cls = cls
@@ -98,7 +99,9 @@ class ClassRewriter:
         self.uses_tr = uses_tr
         self.static_meta = static_meta  # why the class needs the tier B opt-in, or None
         self.class_annotations: list[str] = []
-        self.base: str | None = None
+        self.base: str | None = None  # the Qt base an rqt::Object<> replaced; None when none was inserted
+        self.direct_base: str | None = None  # how the class now spells its direct base
+        self.object_names = object_names or set()
         self.object_line: int | None = None  # where Q_OBJECT was: generated members go here
         self.interfaces: list[str] = []
         self.ctor_count = 0  # constructors declared in the class body
@@ -475,6 +478,13 @@ class ClassRewriter:
             self.report.manual(self.rel, self.head_line + 1, "base class", f"{self.name} has no base class")
             return
         base = supers[0]["name"]
+        if base.split("::")[-1] in self.object_names:
+            # A class derived from another migrated class keeps that base: rqt::Object<Base>
+            # would repeat rqt::object_tag, an ambiguous base that hides the class from Qt's templates.
+            self.direct_base = base
+            self.report.auto(self.rel, self.head_line + 1, "base class", f"`{base}` is itself migrated: kept")
+            self._inherited_constructors(base)
+            return
         rx = re.compile(rf"(:\s*(?:(?:public|protected|private|virtual)\s+)*){re.escape(base)}\b")
         for i in range(self.head_line, self.open_line + 1):
             m = rx.search(self.src.blank_lines[i])
@@ -484,6 +494,7 @@ class ClassRewriter:
                 self.src.replace(i, text[:start] + syntax.object_base(base) + text[start + len(base):])
                 self.report.auto(self.rel, i + 1, "base class")
                 self.base = base
+                self.direct_base = syntax.object_base(base)
                 self._inherited_constructors(base)
                 return
         self.report.manual(self.rel, self.head_line + 1, "base class", f"could not find base `{base}` in the head")
@@ -498,10 +509,11 @@ class ClassRewriter:
                 text = self.src.lines[i].rstrip("\r\n")
                 self.using_line = i
                 if self.ctor_count:
-                    new = syntax.object_base_using(base)
-                    self.report.auto(self.rel, i + 1, "inherited constructors")
+                    new = syntax.object_base_using(base) if self.base else text[:m.end()].strip()
+                    if self.base:
+                        self.report.auto(self.rel, i + 1, "inherited constructors")
                 else:
-                    new = syntax.forwarding_constructor(self.name, base)
+                    new = syntax.forwarding_constructor(self.name, self.direct_base)
                     self.report.auto(self.rel, i + 1, "inherited constructors",
                                      "replaced by a forwarding constructor that calls bind()")
                 self.src.replace(i, m.group(1) + new + text[m.end():])
@@ -584,8 +596,8 @@ class ClassRewriter:
             lines.append(syntax.STATIC_META_OBJECT_DECLARATION)
             self.src.insert_before(self.close_line + 1, syntax.STATIC_META_OBJECT_DEFINITION.format(cls=self.name))
             self.report.auto(self.rel, self.head_line + 1, "static metaobject opt-in", self.static_meta)
-        if self.interfaces and self.base:
-            lines += syntax.interface_metacast(self.base, self.interfaces)
+        if self.interfaces and self.direct_base:
+            lines += syntax.interface_metacast(self.direct_base, self.interfaces)
             self.report.auto(self.rel, self.head_line + 1, "Q_INTERFACES", "qt_metacast override answers "
                              + ", ".join(self.interfaces))
         if not self.ctor_count and self.using_line is None:
@@ -637,12 +649,14 @@ def _overloads(signals: list[dict]) -> list[tuple[str, int]]:
 
 
 def rewrite_classes(src: Source, rel: str, classes: list[dict], report: Report, uses_tr,
-                    static_meta: dict[str, str] | None = None) -> FileResult:
-    """static_meta maps a class name to the reason it needs the tier B opt-in."""
+                    static_meta: dict[str, str] | None = None, object_names: set[str] | None = None) -> FileResult:
+    """static_meta maps a class name to the reason it needs the tier B opt-in; object_names
+    is every QObject class of the tree that is being migrated."""
     result = FileResult()
     static_meta = static_meta or {}
     for cls in classes:
-        rewriter = ClassRewriter(src, rel, cls, report, uses_tr(cls["className"]), static_meta.get(cls["className"]))
+        rewriter = ClassRewriter(src, rel, cls, report, uses_tr(cls["className"]), static_meta.get(cls["className"]),
+                                 object_names)
         if rewriter.run():
             result.migrated_classes.append(cls["className"])
             if rewriter.ctor_declared_only:

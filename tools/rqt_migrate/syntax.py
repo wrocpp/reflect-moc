@@ -32,14 +32,16 @@ def object_base_using(qt_base: str) -> str:
 BIND = "bind();"
 
 
-def forwarding_constructor(cls: str, qt_base: str) -> str:
+def forwarding_constructor(cls: str, direct_base: str) -> str:
     """Replaces `using Base::Base;` in a class with no constructor of its own.
 
     An inherited constructor has no body, so it cannot call bind(). The
-    forwarding constructor takes every argument list the base accepts.
+    forwarding constructor takes every argument list the base accepts;
+    direct_base is how the class spells its base (rqt::Object<B>, or a
+    migrated class).
     """
     return (f"template <class... Args> requires rqt::forwardable<{cls}, Args...> "
-            f"explicit {cls}(Args &&...args) : {object_base(qt_base)}"
+            f"explicit {cls}(Args &&...args) : {direct_base}"
             f"(std::forward<Args>(args)...) {{ {BIND} }}")
 
 
@@ -103,13 +105,13 @@ def classinfo(name_literal: str, value_literal: str) -> str:
     return f"[[=rqt::classinfo{{{name_literal}, {value_literal}}}]]"
 
 
-def interface_metacast(qt_base: str, interfaces: list[str]) -> list[str]:
+def interface_metacast(direct_base: str, interfaces: list[str]) -> list[str]:
     """Q_INTERFACES: the qt_metacast override moc generated, answering each interface's IID.
 
     Lines without indentation; the caller indents them.
     """
     lines = ["void *qt_metacast(const char *name) override", "{",
-             f"    if (void *found = {object_base(qt_base)}::qt_metacast(name))", "        return found;"]
+             f"    if (void *found = {direct_base}::qt_metacast(name))", "        return found;"]
     for iface in interfaces:
         lines += [f"    if (!qstrcmp(name, qobject_interface_iid<{iface} *>()))",
                   f"        return static_cast<{iface} *>(this);"]
