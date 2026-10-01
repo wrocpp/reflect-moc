@@ -129,9 +129,11 @@ consteval std::string type_name(info t) {
   // An enum nested in a class is named by its own identifier, as moc writes it
   // and as Qt looks the enumerator up; one in a namespace (Qt::Orientation) is
   // written qualified.
-  info const parent = meta::parent_of(t);
-  if (meta::is_enum_type(t) && meta::has_identifier(t) && meta::is_type(parent) && meta::is_class_type(parent))
-    return std::string{meta::identifier_of(t)};
+  // parent_of is asked only of an enum: a pointer, array or builtin type has no parent.
+  if (meta::is_enum_type(t) && meta::has_identifier(t)) {
+    info const parent = meta::parent_of(t);
+    if (meta::is_type(parent) && meta::is_class_type(parent)) return std::string{meta::identifier_of(t)};
+  }
   return std::string{meta::display_string_of(t)};
 }
 

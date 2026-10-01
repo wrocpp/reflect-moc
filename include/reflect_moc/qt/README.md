@@ -133,10 +133,14 @@ struct Window : rqt::Object<QWidget> {
 };
 ```
 
-The `requires rqt::forwardable<Window, A...>` line is mandatory: without it the template
-also accepts a `Window` argument, the class looks move-constructible, and Qt's `QMetaType`
-for it instantiates a move that fails with
+The `requires rqt::forwardable<Window, A...>` line is mandatory. It means: the arguments
+are not a `Window` (copy or move), and `std::constructible_from<rqt::Object<QWidget>, A...>`.
+Without the first, the class looks move-constructible and Qt's `QMetaType` for it
+instantiates a move that fails with
 `use of deleted function 'rqt::Object<QWidget>::Object(rqt::Object<QWidget>&&)'`.
+Without the second, the template accepts any argument, so QML treats the class as a
+value type constructible from a `QJSValue` (qqmlprivate.h: "no matching function for
+call to QVariant::fromValue(Person)").
 
 Member function templates and constructor templates are skipped by the reflection
 tables (test: `capability_forwarding_constructor_and_templates`).

@@ -25,6 +25,7 @@ set(RQT_QT_CAPABILITY_TESTS
   capability_namespace_enum_parameter
   capability_forwarding_constructor_and_templates
   capability_private_members
+  capability_pointer_typed_property_and_signal_argument
   limit_parameter_names_must_agree)
 
 # Each must fail to compile, with this text in the compiler's output.

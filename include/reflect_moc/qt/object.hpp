@@ -151,7 +151,12 @@ class Object : public B, public object_tag {
 // move-constructible, and Qt's QMetaType for the class then instantiates a move
 // that forwards a Base to QWidget(const QWidget&), which is deleted.
 template <class Self, class... A>
-concept forwardable = !(sizeof...(A) == 1 && (std::is_base_of_v<Self, std::remove_cvref_t<A>> && ...));
+concept not_copy_or_move = !(sizeof...(A) == 1 && (std::is_base_of_v<Self, std::remove_cvref_t<A>> && ...));
+
+// ... and it must accept only arguments the base accepts. Otherwise QML sees a
+// class constructible from anything (a QJSValue) and treats it as a value type.
+template <class Self, class... A>
+concept forwardable = not_copy_or_move<Self, A...> && std::constructible_from<Object<typename Self::qt_base>, A...>;
 
 // E4: register every rqt::Object class declared directly in a namespace.
 template <meta::info Ns>
