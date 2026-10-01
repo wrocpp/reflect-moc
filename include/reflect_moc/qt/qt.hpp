@@ -4,6 +4,7 @@
 
 #include "annotations.hpp"
 #include "connect.hpp"
+#include "macros.hpp"
 #include "object.hpp"
 
 #if __has_include(<QtQml/qqml.h>)

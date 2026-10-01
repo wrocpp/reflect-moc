@@ -49,13 +49,18 @@ namespace detail {
 // rqt::Object<B> is transparent to Qt: a class deriving from it directly has B
 // as its Qt superclass; a class deriving from another reflected class has that
 // class's meta-object.
+// A base that rqt generates (RQT_OBJECT or a mixin subclass) has its meta-object in the
+// variable template; a Qt class (QObject, QWidget, a moc'd class) has its own staticMetaObject.
 template <class D>
 constexpr QMetaObject::SuperData super_of() {
-  using Base = typename[:object_base_of(^^D):];
-  if constexpr (is_object_instance(^^Base))
+  constexpr info base = super_type(^^D);
+  using Base = typename[:base:];
+  if constexpr (is_object_instance(base))
     return QMetaObject::SuperData::link<Base::qt_base::staticMetaObject>();
-  else
+  else if constexpr (is_reflected_class(base))
     return QMetaObject::SuperData::link<static_meta_object<Base>>();
+  else
+    return QMetaObject::SuperData::link<Base::staticMetaObject>();
 }
 
 struct class_info {
@@ -74,8 +79,9 @@ inline constexpr class_info info_for{&static_meta_object<D>, parent_info<D>(), s
 
 template <class D>
 constexpr class_info const* parent_info() {
-  using Base = typename[:object_base_of(^^D):];
-  if constexpr (is_object_instance(^^Base))
+  constexpr info base = super_type(^^D);
+  using Base = typename[:base:];
+  if constexpr (is_object_instance(base) || !is_reflected_class(base))
     return nullptr;
   else
     return &info_for<Base>;
@@ -189,7 +195,7 @@ bool register_namespace() {
 namespace detail {
 consteval int signal_index(info f) {
   if (kind_of(f) == method_kind::signal_ && meta::is_class_member(f)) return entry_index(meta::parent_of(f), f);
-  throw meta::exception("rqt::emit used outside a [[=rqt::signal]] member function", f);
+  throw meta::exception("rqt::activate used outside a [[=rqt::signal]] member function", f);
 }
 }  // namespace detail
 
@@ -200,17 +206,83 @@ struct signal_id {
 
 // In a signal body `this` has the type of the class that declares the signal,
 // so C names the right meta-object even under multi-level inheritance.
-template <class C>
-struct emit {
-  C* self;
-  signal_id id;
-  emit(C* s, signal_id i = {}) : self(s), id(i) {}
-  template <class... A>
-  void operator()(A const&... a) const {
-    void* args[] = {nullptr, const_cast<void*>(static_cast<void const*>(&a))...};
-    QMetaObject::activate(self, &static_meta_object<C>, id.index, args);
+#define RQT_DEFINE_ACTIVATOR(Name)                                                          \
+  template <class C>                                                                        \
+  struct Name {                                                                             \
+    C* self;                                                                                \
+    signal_id id;                                                                           \
+    Name(C* s, signal_id i = {}) : self(s), id(i) {}                                        \
+    template <class... A>                                                                   \
+    void operator()(A const&... a) const {                                                  \
+      void* args[] = {nullptr, const_cast<void*>(static_cast<void const*>(&a))...};         \
+      QMetaObject::activate(self, &static_meta_object<C>, id.index, args);                  \
+    }                                                                                       \
+  };
+
+RQT_DEFINE_ACTIVATOR(activate)
+#ifdef QT_NO_KEYWORDS
+RQT_DEFINE_ACTIVATOR(emit)  // the earlier spelling; with Qt's keywords on, `emit` is a macro
+#endif
+#undef RQT_DEFINE_ACTIVATOR
+
+// --- RQT_OBJECT: what Q_OBJECT declares, defined through reflection ------------------------------------
+
+// meta_of_class has a declared return type, so its body (reflection on the class) is compiled
+// when the class is complete.
+template <meta::info C>
+QMetaObject const& meta_of_class();
+
+template <meta::info C>
+QMetaObject const& meta_of_class() {
+  return static_meta_object<typename[:C:]>;
+}
+
+namespace detail {
+
+inline bool is_property_call(QMetaObject::Call c) {
+  return c == QMetaObject::ReadProperty || c == QMetaObject::WriteProperty || c == QMetaObject::ResetProperty ||
+         c == QMetaObject::BindableProperty || c == QMetaObject::RegisterPropertyMetaType;
+}
+
+// moc's qt_metacall for one class, after its base has taken its share of the id.
+template <class D>
+int metacall_level(QObject* o, QMetaObject::Call c, int id, void** a) {
+  constexpr int methods = static_cast<int>(method_total<D>);
+  constexpr int properties = static_cast<int>(property_count<D>);
+  if (c == QMetaObject::InvokeMetaMethod || c == QMetaObject::RegisterMethodArgumentMetaType) {
+    if (id < methods) static_metacall<D>(o, c, id, a);
+    id -= methods;
+  } else if (is_property_call(c)) {
+    if (id < properties) static_metacall<D>(o, c, id, a);
+    id -= properties;
   }
-};
+  return id;
+}
+
+}  // namespace detail
+
+template <meta::info C, class Obj>
+void* metacast_impl(Obj* self, char const* name) {
+  using Self = typename[:C:];
+  using Base = typename[:detail::super_type(C):];
+  if (!name) return nullptr;
+  if (!std::strcmp(name, static_meta_object<Self>.className())) return static_cast<void*>(self);
+  return self->Base::qt_metacast(name);
+}
+
+template <meta::info C, class Obj>
+int metacall_impl(Obj* self, QMetaObject::Call c, int id, void** a) {
+  using Self = typename[:C:];
+  using Base = typename[:detail::super_type(C):];
+  id = self->Base::qt_metacall(c, id, a);
+  if (id < 0) return id;
+  return detail::metacall_level<Self>(self, c, id, a);
+}
+
+template <meta::info C>
+void static_call(QObject* o, QMetaObject::Call c, int id, void** a) {
+  detail::static_metacall<typename[:C:]>(o, c, id, a);
+}
 
 }  // namespace rqt
 

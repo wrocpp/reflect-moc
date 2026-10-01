@@ -5,6 +5,7 @@
 
 #include "annotations.hpp"
 
+#include <QtCore/QObject>
 #include <QtCore/qtmocconstants.h>
 
 #include <algorithm>
@@ -196,14 +197,23 @@ consteval void resolve_accessors(prop_desc& d, info cls, property const& p) {
   if (!p.notify.view().empty()) d.notify = resolve_notify(cls, d.anchor, p.notify.view());
 }
 
-consteval prop_desc make_prop(info cls, info anchor) {
-  auto const p = get<property>(anchor);
-  prop_desc d{.anchor = anchor};
-  if (meta::is_nonstatic_data_member(anchor)) {
-    d.member = anchor;
-    d.type = meta::remove_cvref(meta::type_of(anchor));
-    d.writable = !meta::is_const(meta::type_of(anchor));
-  } else if (meta::is_function(anchor)) {
+consteval info find_data_member(info cls, info anchor, std::string_view name) {
+  for (auto m : meta::nonstatic_data_members_of(cls, unchecked))
+    if (meta::has_identifier(m) && meta::identifier_of(m) == name) return m;
+  throw meta::exception(cat({"RQT_PROPERTY MEMBER '", name, "': no non-static data member of that name in ",
+                             meta::identifier_of(cls)}),
+                        anchor);
+}
+
+consteval void resolve_storage(prop_desc& d, info cls, info anchor, property const& p, std::string_view member_name) {
+  info const data = !member_name.empty()                          ? find_data_member(cls, anchor, member_name)
+                    : meta::is_nonstatic_data_member(anchor)      ? anchor
+                                                                  : absent();
+  if (present(data)) {
+    d.member = data;
+    d.type = meta::remove_cvref(meta::type_of(data));
+    d.writable = !meta::is_const(meta::type_of(data));
+  } else if (meta::is_function(anchor) || !p.read.view().empty()) {
     d.read = p.read.view().empty()
                  ? anchor
                  : find_function(cls, anchor, p.read.view(), "READ", [](info m) { return arity(m) == 0; },
@@ -212,9 +222,27 @@ consteval prop_desc make_prop(info cls, info anchor) {
   } else {
     throw meta::exception("rqt::property goes on a getter or a non-static data member", anchor);
   }
+}
+
+// anchor is the getter or data member carrying [[=rqt::property]], or the variable that
+// RQT_PROPERTY declared; p is the annotation or the parsed text, member_name the MEMBER.
+consteval prop_desc make_prop(info cls, info anchor, property const& p, std::string_view member_name = {}) {
+  prop_desc d{.anchor = anchor};
+  resolve_storage(d, cls, anchor, p, member_name);
   resolve_accessors(d, cls, p);
   d.name = p.name.view().empty() ? short_text{meta::identifier_of(anchor)} : p.name;
   return d;
+}
+
+consteval property annotation_from(prop_decl const& pd) {
+  return {.read = pd.read, .write = pd.write, .notify = pd.notify, .reset = pd.reset, .name = pd.name,
+          .final = pd.final, .constant = pd.constant, .required = pd.required, .user = pd.user,
+          .designable = pd.designable, .scriptable = pd.scriptable, .stored = pd.stored};
+}
+
+// A static constexpr member of type prop_decl: what RQT_PROPERTY declares.
+consteval bool is_property_declaration(info m) {
+  return meta::is_variable(m) && meta::is_static_member(m) && meta::remove_cvref(meta::type_of(m)) == ^^prop_decl;
 }
 
 // moc marks a setter named set<Name> as the standard C++ one.
@@ -261,16 +289,25 @@ struct indexed_prop {
 consteval std::vector<prop_desc> make_props(info cls) {
   std::vector<indexed_prop> indexed;
   std::vector<prop_desc> rest;
-  for (auto m : meta::members_of(cls, unchecked))
+  for (auto m : meta::members_of(cls, unchecked)) {
+    property annotation{};
+    prop_desc d;
     if (has<property>(m)) {
-      auto const annotation = get<property>(m);
-      prop_desc d = make_prop(cls, m);
-      d.flags = property_flags_of(d, annotation);
-      if (annotation.index < 0)
-        rest.push_back(d);
-      else
-        indexed.push_back({annotation.index, d});
+      annotation = get<property>(m);
+      d = make_prop(cls, m, annotation);
+    } else if (is_property_declaration(m)) {
+      auto const declared = meta::extract<prop_decl>(m);
+      annotation = annotation_from(declared);
+      d = make_prop(cls, m, annotation, declared.member.view());
+    } else {
+      continue;
     }
+    d.flags = property_flags_of(d, annotation);
+    if (annotation.index < 0)
+      rest.push_back(d);
+    else
+      indexed.push_back({annotation.index, d});
+  }
   std::ranges::sort(indexed, [](indexed_prop const& a, indexed_prop const& b) { return a.index < b.index; });
   std::vector<prop_desc> out;
   for (std::size_t i = 0; i < indexed.size(); ++i) {
@@ -452,19 +489,28 @@ consteval bool is_object_instance(info t) {
   return false;
 }
 
-// The direct base of cls that carries meta-object data: rqt::Object<B> itself
-// or another class derived from it.
-consteval info object_base_of(info cls) {
-  for (auto b : meta::bases_of(cls, unchecked))
-    if (meta::type_of(b) != (^^object_tag) && meta::is_base_of_type(^^object_tag, meta::type_of(b)))
-      return meta::type_of(b);
-  throw meta::exception("rqt: the class does not derive from rqt::Object", cls);
+consteval bool declares_member(info cls, std::string_view name) {
+  for (auto m : meta::members_of(cls, unchecked))
+    if (meta::has_identifier(m) && meta::identifier_of(m) == name) return true;
+  return false;
 }
 
-consteval bool declares_static_meta_object(info cls) {
-  for (auto m : meta::members_of(cls, unchecked))
-    if (meta::has_identifier(m) && meta::identifier_of(m) == "staticMetaObject") return true;
-  return false;
+consteval bool declares_static_meta_object(info cls) { return declares_member(cls, "staticMetaObject"); }
+
+// A class whose meta-object rqt generates: it has RQT_OBJECT (the rqt_object_ marker) or
+// derives from rqt::Object<B>. Qt's own classes (QObject, QWidget) are not.
+consteval bool is_reflected_class(info t) {
+  return declares_member(t, "rqt_object_") || (meta::is_base_of_type(^^object_tag, t) && !is_object_instance(t));
+}
+
+// The base that supplies the Qt superclass: for a mixin class rqt::Object<B>, for the others
+// the first direct base derived from QObject (a class with several bases takes the QObject one).
+consteval info super_type(info cls) {
+  for (auto b : meta::bases_of(cls, unchecked)) {
+    info const t = meta::type_of(b);
+    if (t != (^^object_tag) && meta::is_base_of_type(^^QObject, t)) return t;
+  }
+  throw meta::exception("rqt: the class has no QObject-derived base", cls);
 }
 
 }  // namespace detail

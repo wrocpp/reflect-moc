@@ -28,6 +28,7 @@ set(RQT_QT_CAPABILITY_TESTS
   capability_pointer_typed_property_and_signal_argument
   capability_property_order_follows_explicit_index
   capability_static_metaobject_one_line
+  capability_qt_like_syntax
   limit_parameter_names_must_agree)
 
 # Each must fail to compile, with this text in the compiler's output.
@@ -42,7 +43,7 @@ set(limit_notify_names_a_non_signal_MESSAGE
 set(limit_property_write_typo_MESSAGE
   "no member function of that name in Gauge")
 set(limit_emit_outside_signal_MESSAGE
-  "rqt::emit used outside a \\[\\[=rqt::signal\\]\\] member function")
+  "rqt::activate used outside a \\[\\[=rqt::signal\\]\\] member function")
 set(limit_register_qml_needs_tier_b_MESSAGE
   "rqt::register_qml: the class needs the tier B opt-in")
 set(limit_inline_static_meta_object_MESSAGE

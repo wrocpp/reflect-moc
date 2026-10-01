@@ -2,13 +2,14 @@
 // consteval helpers that read them back.
 #pragma once
 
-#ifndef QT_NO_KEYWORDS
-#error "reflect-moc needs QT_NO_KEYWORDS: Qt's `emit`, `signals` and `slots` macros break rqt::emit"
-#endif
+// QT_NO_KEYWORDS is optional: the library never spells `emit`, `signals` or
+// `slots` (rqt::activate replaces rqt::emit). With QT_NO_KEYWORDS rqt::emit stays
+// as an alias, for code written before the Qt-like syntax.
 
 #include <meta>
 
 #include <cstddef>
+#include <string>
 #include <string_view>
 #include <vector>
 
@@ -75,6 +76,127 @@ struct classinfo {
   short_text key;
   text<max_text_length> value;
 };
+
+// --- RQT_PROPERTY: the exact Q_PROPERTY text, parsed at compile time ------------------------
+
+inline constexpr std::size_t max_type_length = 128;
+
+struct prop_decl {
+  text<max_type_length> type{};
+  short_text name{};
+  short_text read{};
+  short_text write{};
+  short_text notify{};
+  short_text reset{};
+  short_text member{};
+  bool final = false;
+  bool constant = false;
+  bool required = false;
+  bool user = false;
+  bool designable = true;
+  bool scriptable = true;
+  bool stored = true;
+  int revision = 0;
+};
+
+namespace detail {
+
+consteval bool is_property_keyword(std::string_view t) {
+  for (auto k : {"READ", "WRITE", "MEMBER", "RESET", "NOTIFY", "REVISION", "DESIGNABLE", "SCRIPTABLE", "STORED", "USER",
+                 "CONSTANT", "FINAL", "REQUIRED", "BINDABLE"})
+    if (t == k) return true;
+  return false;
+}
+
+consteval std::vector<std::string_view> split_words(std::string_view s) {
+  std::vector<std::string_view> words;
+  for (std::size_t i = 0; i < s.size();) {
+    while (i < s.size() && s[i] == ' ') ++i;
+    std::size_t j = i;
+    while (j < s.size() && s[j] != ' ') ++j;
+    if (j > i) words.push_back(s.substr(i, j - i));
+    i = j;
+  }
+  return words;
+}
+
+[[noreturn]] consteval void bad_property(std::string_view why) {
+  throw meta::exception(std::string{"RQT_PROPERTY: "}.append(why), ^^bad_property);
+}
+
+// `true` or `false` after DESIGNABLE, SCRIPTABLE, STORED and USER. A function name
+// there (moc evaluates it at run time) is not supported.
+consteval bool parse_bool_value(std::string_view keyword, std::vector<std::string_view> const& w, std::size_t& i) {
+  if (i + 1 < w.size() && (w[i + 1] == "true" || w[i + 1] == "false")) return w[++i] == "true";
+  if (i + 1 < w.size() && !is_property_keyword(w[i + 1]))
+    bad_property(std::string{keyword}.append(" takes true or false; a function name is not supported"));
+  return true;  // a bare USER
+}
+
+consteval std::string_view word_after(std::string_view keyword, std::vector<std::string_view> const& w, std::size_t& i) {
+  if (i + 1 >= w.size()) bad_property(std::string{keyword}.append(" needs a name"));
+  return w[++i];
+}
+
+consteval int parse_number(std::string_view s) {
+  int n = 0;
+  for (char c : s) {
+    if (c < '0' || c > '9') bad_property("REVISION needs a number");
+    n = n * 10 + (c - '0');
+  }
+  return n;
+}
+
+consteval void parse_keywords(prop_decl& p, std::vector<std::string_view> const& w, std::size_t first_keyword) {
+  for (std::size_t i = first_keyword; i < w.size(); ++i) {
+    std::string_view const k = w[i];
+    if (k == "READ") p.read = short_text{word_after(k, w, i)};
+    else if (k == "WRITE") p.write = short_text{word_after(k, w, i)};
+    else if (k == "MEMBER") p.member = short_text{word_after(k, w, i)};
+    else if (k == "RESET") p.reset = short_text{word_after(k, w, i)};
+    else if (k == "NOTIFY") p.notify = short_text{word_after(k, w, i)};
+    else if (k == "REVISION") p.revision = parse_number(word_after(k, w, i));
+    else if (k == "DESIGNABLE") p.designable = parse_bool_value(k, w, i);
+    else if (k == "SCRIPTABLE") p.scriptable = parse_bool_value(k, w, i);
+    else if (k == "STORED") p.stored = parse_bool_value(k, w, i);
+    else if (k == "USER") p.user = parse_bool_value(k, w, i);
+    else if (k == "CONSTANT") p.constant = true;
+    else if (k == "FINAL") p.final = true;
+    else if (k == "REQUIRED") p.required = true;
+    else bad_property(std::string{k}.append(" is not supported"));
+  }
+}
+
+}  // namespace detail
+
+// `RQT_PROPERTY(int value READ value WRITE setValue NOTIFY valueChanged)` stringifies its
+// argument and lands here. The type may be several words or a template (`QList<int>`); the
+// name is the word before the first keyword.
+consteval prop_decl parse_property(std::string_view text_of_property) {
+  auto const words = detail::split_words(text_of_property);
+  std::size_t first_keyword = words.size();
+  for (std::size_t i = 0; i < words.size(); ++i)
+    if (detail::is_property_keyword(words[i])) {
+      first_keyword = i;
+      break;
+    }
+  if (first_keyword < 2) detail::bad_property("expected `type name KEYWORD ...`");
+
+  prop_decl p;
+  std::string_view name = words[first_keyword - 1];
+  std::string type;
+  for (std::size_t i = 0; i + 1 < first_keyword; ++i) type.append(i ? " " : "").append(words[i]);
+  // `Person *host` stringifies as two words, the star glued to the name
+  while (!name.empty() && (name.front() == '*' || name.front() == '&')) {
+    type.push_back(name.front());
+    name.remove_prefix(1);
+  }
+  p.type = text<max_type_length>{type};
+  p.name = short_text{name};
+  detail::parse_keywords(p, words, first_keyword);
+  if (p.read.view().empty() && p.member.view().empty()) detail::bad_property("needs READ or MEMBER");
+  return p;
+}
 
 namespace detail {
 
