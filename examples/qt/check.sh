@@ -18,6 +18,7 @@ shift
 here="$(cd "$(dirname "$0")" && pwd)"
 [ $# -gt 0 ] || set -- mandelbrot birthdayparty sliders queuedcustomtype
 out="${RQT_EXAMPLES_BUILD:-/tmp/rqt-examples}"
+warning_flags="-Wall -Wextra"
 harness_timeout=120
 smoke_seconds=2
 timed_out=124
@@ -46,7 +47,7 @@ for name in "$@"; do
   echo "=== $name ($variant)"
   rm -rf "$bin"
   start=$(date +%s)
-  if ! { cmake -S "$src" -B "$bin" -G Ninja -DCMAKE_BUILD_TYPE=Release &&
+  if ! { cmake -S "$src" -B "$bin" -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS="$warning_flags" &&
          cmake --build "$bin" --verbose; } > "$log" 2>&1; then
     echo "BUILD FAILED (log: $log)"
     grep -E 'error|Error' "$log" | head -40
@@ -54,6 +55,9 @@ for name in "$@"; do
     continue
   fi
   echo "build: $(( $(date +%s) - start ))s"
+  warnings=$(grep -c 'warning:' "$log")
+  echo "warnings in build log: $warnings"
+  [ "$variant" = ported ] && [ "$warnings" -ne 0 ] && { echo "FAIL: the ported build is not warning-free"; status=1; }
   if grep -qE 'libexec/moc|AutoMoc|Automatic MOC|mocs_compilation|moc_[A-Za-z0-9_]+\.cpp' "$log"; then
     mocs=$(grep -cE 'libexec/moc|AutoMoc|Automatic MOC|mocs_compilation|moc_[A-Za-z0-9_]+\.cpp' "$log")
     echo "moc lines in build log: $mocs"
