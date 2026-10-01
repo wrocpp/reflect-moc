@@ -19,6 +19,7 @@ variants that do not work sit behind `-DSPIKE_*` probe macros, and
 | 04 | fixed_string -> member, CRTP set/get | works | works (after the shim) |
 | 05 | signal forms (a) current_function, (b) descriptor | both work | (a) blocked, (b) works |
 | 06 | real Qt 6.10 without moc | works: moc-free meta-object from reflection, QML included (4 workarounds) | not tried |
+| 07 | non-template base + deducing this, no CRTP | works; qobject_cast / PMF connect / qmlRegisterType need a 2-line opt-in | not tried |
 
 ## Shared differences
 
@@ -267,6 +268,122 @@ Which metaObjectData inputs come from reflection:
 Emit uses form 05(a): `rqt::emit{this}(args...)` inside a `[[=rqt::signal]]`
 body, which calls `QMetaObject::activate` with the reflected local index.
 
-Not tried here: queued connections across QThread, and non-builtin metatypes.
-The CRTP base was rejected after this spike, and spike 07 explores the
-alternative.
+Not tried here: queued connections across QThread (spike 07 covers them), and
+non-builtin metatypes. The CRTP base was rejected after this spike, and
+spike 07 explores the alternative.
+
+## 07 Non-template base with deducing this (no CRTP)
+
+Files: `spikes/07-deducing-this/binding.cpp` (the non-Qt research by
+team-lead, E1-E4, re-run in the image) and `qt_binding.cpp` (the same against
+Qt 6.10.3). Build: `sh spikes/07-deducing-this/build.sh` in the image.
+
+Shape: `class rqt::Object : public ::QObject` is ONE class with no template
+parameter. It overrides `metaObject()`, `qt_metacall` and `qt_metacast` once,
+and they dispatch through a per-instance `class_info const*` that points at
+per-class data generated from reflection:
+`rqt::static_meta_object<T>` (an `inline constexpr QMetaObject` variable template)
+and `rqt::info_for<T>` (meta-object, parent info, method and property counts).
+The superclass and parent come from `bases_of(^^T)`, and `rqt::Object` itself
+is transparent (its direct subclasses get `QObject` as Qt superclass).
+`qt_metacall` walks the class chain root-first, which is moc's offset
+arithmetic, so multi-level inheritance (`Sub : Worker : rqt::Object`) works.
+In a signal body, `this` has the declaring class's type, so
+`rqt::emit{this}` picks the right meta-object and local index at every level.
+
+Binding the per-instance pointer, all three verified against real Qt:
+
+| binding | what the class writes | how |
+|---|---|---|
+| E2 | `Receiver() : rqt::Object(this) {}` | base ctor template deduces Self, which is complete in a mem-initializer |
+| E3 | `Sub() { bind(); }` | deducing-this member; the most-derived ctor body runs last and wins |
+| E4 | nothing | `rqt::register_namespace<^^app>()` scans `members_of(namespace)` once into a `typeid -> class_info` map; `metaObject()` looks `typeid(*this)` up lazily |
+
+E4 does not see `QQmlPrivate::QQmlElement<T>`, the subclass that
+`qmlRegisterType<T>` instantiates (`typeid` gives
+`N11QQmlPrivate11QQmlElementI6GadgetEE`). Classes created by QML therefore need
+E2 or E3, and the spike's QML type uses E3.
+
+E1 (team-lead): deducing this sees the static type at the call site, so it
+serves the user-facing API, not Qt's virtual calls through `QObject*`. Verified
+in Qt: `w.set<"progress">(7)` writes the property and emits its NOTIFY, and
+`w.get<"progress">()` reads it.
+
+What works with stock Qt 6.10.3 and NO per-class declaration (Worker, E4):
+
+| check | result |
+|---|---|
+| `QObject::connect(SIGNAL(...), SLOT(...))`, incl. an inherited slot | works |
+| `QMetaObject::invokeMethod`, own + inherited, `Q_RETURN_ARG` from a const method | works |
+| `QMetaProperty` read/write/notify through the chain | works |
+| `inherits("Worker")`, `className()`, `superClass()` | works |
+| queued connection across a `QThread`, string connect | works (slot ran on the worker thread) |
+| `rqt::connect(&w, &Worker::sig, &r, &Receiver::slot, Qt::QueuedConnection)` (PMFs -> indexes -> `QMetaObject::connect`) | works, queued included |
+| QML context property: binding, `function onProgressChanged(progress)`, invokable call | works |
+| `rqt::cast<T>(obj)` (= `static_meta_object<T>.cast(obj)`) | works |
+| `qobject_cast<Worker*>` | **impossible**: `qobjectdefs.h:748: static assertion failed: qobject_cast requires the type to have a Q_OBJECT macro` |
+| `QObject::connect(&w, &Worker::sig, ...)` (PMF / functor) | **impossible**: `qobject.h:250: static assertion failed: No Q_OBJECT in the class with the signal` |
+| `qmlRegisterType<T>` | needs `T::staticMetaObject` |
+| functor slot via an index | no public API (`QObject::connectImpl` is private, `QObjectPrivate::connect` is private API) |
+
+Why the HasQ_OBJECT_Macro specialization must NOT be blanket here:
+`QtPrivate::HasQ_OBJECT_Macro<T>` is
+`sizeof(test(&Object::qt_metacall)) == sizeof(int)`, where the
+`int (Object::*)(...)` overload only matches when `qt_metacall` is a member of
+T itself. Forcing it true for a class without its own `staticMetaObject`
+would make `qobject_cast<Worker*>` compile against the INHERITED
+`QObject::staticMetaObject` and succeed for ANY QObject. PMF connect would
+search QObject's methods for the signal. So the spike specializes it only for
+classes that declare `staticMetaObject` themselves (checked by reflection), and
+lets Qt's static_assert reject the others.
+
+The opt-in for Qt's own templates (Gadget): two lines,
+
+    struct Gadget : rqt::Object {
+      static QMetaObject const& staticMetaObject;   // in the class
+      Gadget() { bind(); }
+      ...
+    };
+    QMetaObject const& Gadget::staticMetaObject = rqt::static_meta_object<Gadget>;  // after it
+
+With it, `qobject_cast<Gadget*>`, PMF/functor `QObject::connect(&g, &Gadget::valueChanged, ...)`
+and `qmlRegisterType<Gadget>("demo", 1, 0, "Gadget")` all work. The QML test
+instantiates `Gadget { value: 3; onValueChanged: function(value) {...} }`, then
+calls its slot from QML.
+
+Blocked / traps:
+- `SPIKE_INLINE_SMO`: the one-line in-class form
+  `static constexpr QMetaObject const& staticMetaObject = rqt::static_meta_object<Gadget>;`
+  instantiates the meta-object while Gadget is incomplete:
+  `uncaught exception of type 'std::meta::exception'; 'what()': 'neither complete class type nor namespace'`.
+  So the reference has to be defined out of class (2 lines).
+- `SPIKE_INDEX_CONNECT_MISMATCH`: index-based `QMetaObject::connect` does NOT
+  check argument compatibility. It returned a valid connection for
+  `finished()` -> `setProgress(int)`, and the slot would read garbage.
+  `rqt::connect` checks at compile time that the slot's parameters are a
+  prefix of the signal's:
+  `static assertion failed: rqt::connect: the slot's parameters must be a prefix of the signal's`.
+- **GCC 16.2 immediate escalation**: an empty `||` fold over a pack in
+  `static_metacall` warns `statement has no effect [-Wunused-value]`. Silencing
+  it with `(void)(fold)` makes GCC escalate the enclosing lambda to consteval:
+  `call to consteval function '<lambda closure object>rqt::static_metacall<Gadget>(...)::<lambda(...)>{id, t, a}...' is not a constant expression`,
+  `'id' is not a constant expression`. Skip empty packs with `if constexpr`.
+- QML warns `Parameter "value" is not declared. Injection of parameters into signal handlers is deprecated`
+  for `onValueChanged: ... value`. The handler must use the
+  `function(value) {...}` form. The parameter NAME still comes from our table.
+
+Not done: alternative (3), Qt's per-instance dynamic meta-object
+(`QAbstractDynamicMetaObject` in `QtCore/private/qobject_p.h`), which would
+allow a plain `class Worker : public QObject` plus one `rqt::bind(this)`. It
+is private API, and QML installs its own `QQmlVMEMetaObject` in the same slot
+(`d_ptr->metaObject`) for objects with QML-declared properties, so the two
+would collide. Spike 07's base already respects that slot first
+(`metaObject()` returns `d_ptr->dynamicMetaObject()` when set). I did not
+pursue it because (1) works.
+
+Recommendation for the library (the lead's requirement (2) asks for "any Qt
+base"): `template<class B = QObject> class rqt::Object : public B`, a mixin
+templated on the BASE only, with this spike's dispatch. Bind with E3 (or E2)
+by default, so QML-created subclasses work. Offer the 2-line `staticMetaObject`
+opt-in for `qobject_cast`, PMF connect and `qmlRegisterType`, plus
+`rqt::cast` and `rqt::connect` for classes that skip it.
