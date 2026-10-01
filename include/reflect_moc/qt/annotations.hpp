@@ -79,6 +79,13 @@ struct classinfo {
   text<max_text_length> value;
 };
 
+// RQT_ENUM(Mode) / RQT_FLAG(Opts): a static constexpr member that holds the type.
+// For a flag, Opts may be a QFlags<Enum> alias (Q_FLAG(Opts)) or an enum.
+struct enum_decl {
+  meta::info type;
+  bool flag;
+};
+
 // Parameter names of a signal data member: `[[=rqt::names("value, count")]] rqt::signal<void(int, int)> changed;`
 // (a function type has no parameter names, and QML reads them).
 struct names {

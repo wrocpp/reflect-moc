@@ -125,24 +125,28 @@ constexpr auto property_data() {
 
 // --- enum rows -------------------------------------------------------------------------
 
-template <class D, info E, std::size_t... V>
+// En.type is an enum, or a QFlags alias (Q_FLAG(Opts)): name and alias differ then, and the enumerators
+// are those of the enum behind the alias.
+template <class D, enum_entry En, std::size_t... V>
 constexpr auto enum_data_for(std::index_sequence<V...>) {
-  using Enum = typename[:E:];
-  constexpr unsigned name = string_index<D>(meta::identifier_of(E));
-  constexpr unsigned flags = has<flag_t>(E) ? QMC::EnumIsFlag : 0u;
+  using Enum = typename[:meta::dealias(En.type):];
+  constexpr info real = enum_real(En);
+  constexpr unsigned name = string_index<D>(enum_name(En));
+  constexpr unsigned alias = string_index<D>(enum_alias(En));
+  constexpr unsigned flags = En.flag ? QMC::EnumIsFlag : 0u;
   if constexpr (sizeof...(V) == 0) {
-    return QtMocHelpers::EnumData<Enum>(name, name, flags);
+    return QtMocHelpers::EnumData<Enum>(name, alias, flags);
   } else {
-    return QtMocHelpers::EnumData<Enum>(name, name, flags)
-        .add({{static_cast<int>(string_index<D>(meta::identifier_of(meta::enumerators_of(E)[V]))),
-               [:meta::enumerators_of(E)[V]:]}...});
+    return QtMocHelpers::EnumData<Enum>(name, alias, flags)
+        .add({{static_cast<int>(string_index<D>(meta::identifier_of(meta::enumerators_of(real)[V]))),
+               [:meta::enumerators_of(real)[V]:]}...});
   }
 }
 
 template <class D, std::size_t I>
 constexpr auto enum_data() {
-  constexpr info e = enum_list<D>[I];
-  return enum_data_for<D, e>(std::make_index_sequence<meta::enumerators_of(e).size()>{});
+  constexpr enum_entry e = enum_list<D>[I];
+  return enum_data_for<D, e>(std::make_index_sequence<meta::enumerators_of(enum_real(e)).size()>{});
 }
 
 // --- class info ------------------------------------------------------------------------

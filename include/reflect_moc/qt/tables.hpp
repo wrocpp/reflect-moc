@@ -460,18 +460,53 @@ consteval int notify_index(info cls, prop_desc const& d) {
 
 // --- enums and class info ------------------------------------------------------------
 
-consteval std::vector<info> make_enums(info cls) {
-  std::vector<info> out;
+// One registered enum: the type as written (an enum, or for Q_FLAG(Opts) a QFlags alias), and whether it is a flag.
+struct enum_entry {
+  info type;
+  bool flag;
+};
+
+consteval bool is_enum_declaration(info m) {
+  return meta::is_variable(m) && meta::is_static_member(m) && meta::remove_cvref(meta::type_of(m)) == ^^enum_decl;
+}
+
+// Annotated enums first ([[=rqt::enum_]], [[=rqt::flag]]), then RQT_ENUM / RQT_FLAG in declaration order.
+consteval std::vector<enum_entry> make_enums(info cls) {
+  std::vector<enum_entry> out;
   for (auto m : meta::members_of(cls, unchecked))
-    if (meta::is_enumerable_type(m) && (has<enum_t>(m) || has<flag_t>(m))) out.push_back(m);
+    if (meta::is_enumerable_type(m) && (has<enum_t>(m) || has<flag_t>(m))) out.push_back({m, has<flag_t>(m)});
+  for (auto m : meta::members_of(cls, unchecked))
+    if (is_enum_declaration(m)) {
+      auto const declared = meta::extract<enum_decl>(m);
+      out.push_back({declared.type, declared.flag});
+    }
   return out;
 }
+
+// QFlags<Enum> (Q_FLAG(Opts)): the enum behind the alias; otherwise the type itself.
+consteval info enum_real(enum_entry const& e) {
+  info const t = meta::dealias(e.type);
+  if (meta::has_template_arguments(t) && meta::template_of(t) == ^^QFlags) return meta::template_arguments_of(t)[0];
+  return t;
+}
+
+consteval std::string_view enum_name(enum_entry const& e) { return meta::identifier_of(e.type); }
+consteval std::string_view enum_alias(enum_entry const& e) { return meta::identifier_of(enum_real(e)); }
 
 template <class D>
 inline constexpr auto enum_list = std::define_static_array(make_enums(^^D));
 
+// Class info: [[=rqt::classinfo{...}]] on the class, then RQT_CLASSINFO in declaration order.
+consteval std::vector<classinfo> make_classinfos(info cls) {
+  std::vector<classinfo> out = all<classinfo>(cls);
+  for (auto m : meta::members_of(cls, unchecked))
+    if (meta::is_variable(m) && meta::is_static_member(m) && meta::remove_cvref(meta::type_of(m)) == ^^classinfo)
+      out.push_back(meta::extract<classinfo>(m));
+  return out;
+}
+
 template <class D>
-inline constexpr auto classinfo_list = std::define_static_array(all<classinfo>(^^D));
+inline constexpr auto classinfo_list = std::define_static_array(make_classinfos(^^D));
 
 // --- the string pool -----------------------------------------------------------------
 
@@ -508,8 +543,9 @@ consteval void pool_properties(string_pool& pool, info cls) {
 
 consteval void pool_enums(string_pool& pool, info cls) {
   for (auto e : make_enums(cls)) {
-    pool.add(meta::identifier_of(e));
-    for (auto v : meta::enumerators_of(e)) pool.add(meta::identifier_of(v));
+    pool.add(enum_name(e));
+    pool.add(enum_alias(e));
+    for (auto v : meta::enumerators_of(enum_real(e))) pool.add(meta::identifier_of(v));
   }
 }
 
@@ -518,7 +554,7 @@ consteval std::vector<std::string> make_strings(info cls) {
   string_pool pool;
   pool.add(qualified_name(cls));
   pool.add("");
-  for (auto ci : all<classinfo>(cls)) {
+  for (auto ci : make_classinfos(cls)) {
     pool.add(ci.key.view());
     pool.add(ci.value.view());
   }

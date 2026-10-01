@@ -41,6 +41,12 @@
     ::rqt::static_call<RQT_SELF>(rqt_o, rqt_call, rqt_id, rqt_args);                                       \
   }
 
+// Q_ENUM(Mode), Q_FLAG(Opts) and Q_CLASSINFO("key", "value"): static constexpr holders the library finds
+// by reflection. The enum (and for Q_FLAG the QFlags alias) must already be declared.
+#define RQT_ENUM(Type) static constexpr ::rqt::enum_decl RQT_UNIQUE(rqt_enum_){^^Type, false};
+#define RQT_FLAG(Type) static constexpr ::rqt::enum_decl RQT_UNIQUE(rqt_flag_){^^Type, true};
+#define RQT_CLASSINFO(key, value) static constexpr ::rqt::classinfo RQT_UNIQUE(rqt_classinfo_){key, value};
+
 // Q_PROPERTY(type name READ r WRITE w NOTIFY n ...): the argument text is parsed at compile time.
 #define RQT_PROPERTY(...) \
   static constexpr ::rqt::prop_decl RQT_UNIQUE(rqt_property_) = ::rqt::parse_property(#__VA_ARGS__);
