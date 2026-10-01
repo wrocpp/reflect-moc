@@ -33,8 +33,8 @@ int method_index(F C::* pmf) {
     (
         [&] {
           constexpr method_entry e = method_entries<C>[I];
-          if constexpr (!e.cloned && std::is_same_v<decltype(&[:e.fn:]), F C::*>)
-            if (found < 0 && &[:e.fn:] == pmf) found = static_cast<int>(I);
+          if constexpr (!e.cloned && std::is_same_v<decltype(member_pointer<e.fn>()), F C::*>)
+            if (found < 0 && member_pointer<e.fn>() == pmf) found = static_cast<int>(I);
         }(),
         ...);
     return found < 0 ? -1 : static_meta_object<C>.methodOffset() + found;

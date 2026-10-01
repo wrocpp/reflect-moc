@@ -27,6 +27,42 @@ void with_index(int id, F&& f) {
   }
 }
 
+// --- private members ------------------------------------------------------------------
+// A splice is access-checked at the splice site, so library code cannot write
+// `self->[:fn:]` for a private slot (GCC 16.2: "'void D::hidden(int)' is private
+// within this context"). std::meta::extract of a member FUNCTION is not
+// access-checked, so functions are called through the extracted pointer to
+// member. extract of a private data member is checked, so a private data member
+// is reached through its offset.
+
+template <info Fn>
+constexpr auto member_pointer() {
+  using Cls = typename[:meta::parent_of(Fn):];
+  using F = typename[:meta::type_of(Fn):];
+  return meta::extract<F Cls::*>(Fn);
+}
+
+template <info Fn, class C, class... A>
+decltype(auto) call(C* self, A&&... a) {
+  if constexpr (meta::is_public(Fn)) {
+    return self->[:Fn:](std::forward<A>(a)...);  // default arguments apply, which a pointer to member cannot give
+  } else {
+    constexpr auto pointer = member_pointer<Fn>();
+    return (self->*pointer)(std::forward<A>(a)...);
+  }
+}
+
+template <info M, class C>
+decltype(auto) member_ref(C* self) {
+  using T = typename[:meta::type_of(M):];
+  if constexpr (meta::is_public(M)) {
+    return (self->[:M:]);
+  } else {
+    constexpr std::size_t offset = meta::offset_of(M).bytes;
+    return (*reinterpret_cast<T*>(reinterpret_cast<std::byte*>(self) + offset));
+  }
+}
+
 template <info Fn, std::size_t P>
 using param_t = std::remove_cvref_t<typename[:meta::type_of(meta::parameters_of(Fn)[P]):]>;
 
@@ -41,9 +77,9 @@ void call_with_args(C* self, void** args) {
   [&]<std::size_t... P>(std::index_sequence<P...>) {
     using R = typename[:meta::return_type_of(Fn):];
     if constexpr (std::is_void_v<R>) {
-      self->[:Fn:](arg_at<Fn, P>(args)...);
+      call<Fn>(self, arg_at<Fn, P>(args)...);
     } else {
-      std::remove_cvref_t<R> r = self->[:Fn:](arg_at<Fn, P>(args)...);
+      std::remove_cvref_t<R> r = call<Fn>(self, arg_at<Fn, P>(args)...);
       if (args[0]) *static_cast<std::remove_cvref_t<R>*>(args[0]) = std::move(r);
     }
   }(std::make_index_sequence<N>{});
@@ -63,7 +99,8 @@ template <class D, std::size_t I>
 bool match_signal(void** a) {
   constexpr method_entry e = method_entries<D>[I];
   if constexpr (!e.cloned && kind_of(e.fn) == method_kind::signal_)
-    return QtMocHelpers::indexOfMethod<decltype(&[:e.fn:])>(a, &[:e.fn:], static_cast<int>(I));
+    return QtMocHelpers::indexOfMethod<decltype(member_pointer<e.fn>())>(a, member_pointer<e.fn>(),
+                                                                         static_cast<int>(I));
   else
     return false;
 }
@@ -103,18 +140,18 @@ void register_method_argument(int id, void** a) {
 template <class T, class D, prop_desc d>
 void read_property(D* t, void* v) {
   if constexpr (present(d.member))
-    *static_cast<T*>(v) = t->[:d.member:];
+    *static_cast<T*>(v) = member_ref<d.member>(t);
   else
-    *static_cast<T*>(v) = t->[:d.read:]();
+    *static_cast<T*>(v) = call<d.read>(t);
 }
 
 template <prop_desc d, class D>
 void emit_notify(D* t) {
   if constexpr (present(d.notify)) {
     if constexpr (arity(d.notify) == 0)
-      t->[:d.notify:]();
+      call<d.notify>(t);
     else
-      t->[:d.notify:](t->[:d.member:]);
+      call<d.notify>(t, member_ref<d.member>(t));
   }
 }
 
@@ -122,15 +159,15 @@ template <class T, prop_desc d, class D>
 void write_property(D* t, void* v) {
   auto& value = *static_cast<T*>(v);
   if constexpr (present(d.write)) {
-    t->[:d.write:](value);
+    call<d.write>(t, value);
   } else if constexpr (present(d.member) && d.writable) {
-    if (QtMocHelpers::setProperty(t->[:d.member:], value)) emit_notify<d>(t);
+    if (QtMocHelpers::setProperty(member_ref<d.member>(t), value)) emit_notify<d>(t);
   }
 }
 
 template <prop_desc d, class D>
 void reset_property(D* t) {
-  if constexpr (present(d.reset)) t->[:d.reset:]();
+  if constexpr (present(d.reset)) call<d.reset>(t);
 }
 
 template <class T>
