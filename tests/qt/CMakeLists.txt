@@ -155,5 +155,6 @@ target_include_directories(rqt_no_moc_probe PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 set_target_properties(rqt_no_moc_probe PROPERTIES AUTOMOC OFF AUTOUIC OFF AUTORCC OFF)
 add_test(NAME capability_no_moc_in_build
   COMMAND ${CMAKE_COMMAND} -DBUILD_DIR=${CMAKE_BINARY_DIR} -DTARGET=rqt_no_moc_probe
+          "-DOBJECTS=$<TARGET_OBJECTS:rqt_no_moc_probe>"
           -P ${CMAKE_CURRENT_SOURCE_DIR}/check_no_moc.cmake)
 set_tests_properties(capability_no_moc_in_build PROPERTIES LABELS qt RESOURCE_LOCK rqt_build_tree)

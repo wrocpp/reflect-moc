@@ -1,8 +1,11 @@
 # Rebuilds one Qt-layer target from scratch with the full command lines and
 # fails if moc, or anything AUTOMOC generates, appears in the log.
-# Usage: cmake -DBUILD_DIR=<dir> -DTARGET=<target> -P check_no_moc.cmake
+# Usage: cmake -DBUILD_DIR=<dir> -DTARGET=<target> -DOBJECTS=<object files> -P check_no_moc.cmake
+# Only the target's own object files are deleted: --clean-first would clean the
+# whole build tree and take every test executable with it.
+file(REMOVE ${OBJECTS})
 execute_process(
-  COMMAND ${CMAKE_COMMAND} --build ${BUILD_DIR} --target ${TARGET} --clean-first --verbose
+  COMMAND ${CMAKE_COMMAND} --build ${BUILD_DIR} --target ${TARGET} --verbose
   RESULT_VARIABLE rc
   OUTPUT_VARIABLE out
   ERROR_VARIABLE err)
