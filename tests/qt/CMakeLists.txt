@@ -38,6 +38,7 @@ set(RQT_QT_CAPABILITY_TESTS
   capability_static_signal_size
   capability_static_signal_queued
   capability_static_signal_qml
+  limit_static_signal_other_instance
   limit_parameter_names_must_agree)
 
 # Each must fail to compile, with this text in the compiler's output.
@@ -59,6 +60,14 @@ set(limit_inline_static_meta_object_MESSAGE
   "neither complete class type nor namespace")
 set(limit_property_index_gap_MESSAGE
   "has index 2 but the indexes must be 0, 1, 2")
+set(limit_static_signal_missing_emit_MESSAGE
+  "a signal call only builds the emission")
+set(limit_static_signal_wrong_owner_MESSAGE
+  "this signal belongs to another class than the object that emits it")
+set(limit_static_signal_const_owner_MESSAGE
+  "a signal is a non-const member: it cannot be emitted from a const member function")
+set(limit_static_signal_static_member_function_MESSAGE
+  "is unavailable for static member functions")
 set(RQT_QT_COMPILE_FAIL_TESTS
   limit_property_index_gap
   limit_rqt_connect_argument_mismatch
@@ -68,7 +77,11 @@ set(RQT_QT_COMPILE_FAIL_TESTS
   limit_property_write_typo
   limit_emit_outside_signal
   limit_register_qml_needs_tier_b
-  limit_inline_static_meta_object)
+  limit_inline_static_meta_object
+  limit_static_signal_missing_emit
+  limit_static_signal_wrong_owner
+  limit_static_signal_const_owner
+  limit_static_signal_static_member_function)
 
 set(RQT_QT_LIBS reflect_moc::qt reflect_moc_warnings Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Qml)
 
