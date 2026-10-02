@@ -41,3 +41,12 @@ cd tools && python3 -m unittest discover -s tests
 ```
 
 The fixtures' moc JSON is saved under `tests/fixtures/<case>/moc`, so the tests need no Qt. After changing a fixture, regenerate the JSON with `tests/regen_fixtures.sh` in the image.
+
+## tools/rqt-lint-emit.py
+
+Flags `emit other->sig(v)` and `emit other.sig(v)` where `sig` is an `rqt::static_signal`. A static signal is one object for the whole class, so the line compiles and fires on `this`, not on `other`. The fix is `sig(v).from(other);`. Python 3, stdlib only; the names of the static signals are collected from every file scanned.
+
+```sh
+tools/rqt-lint-emit.py src include     # exit 1 if a line is flagged
+cd tools && python3 -m unittest discover -s tests
+```
