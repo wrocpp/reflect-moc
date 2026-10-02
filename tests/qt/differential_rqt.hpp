@@ -101,4 +101,41 @@ class Derived : public Base {
   int extra_ = 0;
 };
 
+// signals as static members: they take no space, and RQT_OBJECT_STATIC leaves out the anchor
+class StaticSignals : public QObject {
+  RQT_OBJECT_STATIC
+  RQT_PROPERTY(int level READ level WRITE setLevel NOTIFY levelChanged)
+
+ public:
+  explicit StaticSignals(QObject* parent = nullptr) : QObject(parent) {}
+  int level() const { return level_; }
+
+ public slots:
+  [[= rqt::slot]] void setLevel(int v) {
+    level_ = v;
+    levelChanged(v).from(this);
+  }
+  [[= rqt::slot]] void reset() { setLevel(0); }
+
+ signals:
+  [[= rqt::names("level")]] static inline rqt::static_signal<void(int)> levelChanged{};
+  [[= rqt::names("from, to")]] static inline rqt::static_signal<void(int, int)> moved{};
+  static inline rqt::static_signal<void()> done{};
+  [[= rqt::names("label")]] static inline rqt::static_signal<void(const QString&)> labelled{};
+
+ private:
+  int level_ = 0;
+};
+
+class DerivedStaticSignals : public StaticSignals {
+  RQT_OBJECT_STATIC
+
+ public:
+  explicit DerivedStaticSignals(QObject* parent = nullptr) : StaticSignals(parent) {}
+  [[= rqt::invokable]] int twice(int n) const { return 2 * n; }
+
+ signals:
+  [[= rqt::names("extra")]] static inline rqt::static_signal<void(int)> extraChanged{};
+};
+
 }  // namespace viarqt

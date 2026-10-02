@@ -52,6 +52,15 @@ int main(int argc, char** argv) {
   compare("Base", moc_base.metaObject(), rqt_base.metaObject());
   compare("Derived", moc_derived.metaObject(), rqt_derived.metaObject());
 
+  // signals declared as static members (rqt::static_signal): the same meta-object as moc's
+  viamoc::StaticSignals moc_static;
+  viarqt::StaticSignals rqt_static;
+  viamoc::DerivedStaticSignals moc_derived_static;
+  viarqt::DerivedStaticSignals rqt_derived_static;
+  compare("StaticSignals", moc_static.metaObject(), rqt_static.metaObject());
+  compare("DerivedStaticSignals", moc_derived_static.metaObject(), rqt_derived_static.metaObject());
+  CHECK(moc_derived_static.metaObject()->methodCount() == rqt_derived_static.metaObject()->methodCount());
+
   // the chain and the totals Qt computes from it
   QMetaObject const* moc_mo = moc_derived.metaObject();
   QMetaObject const* rqt_mo = rqt_derived.metaObject();

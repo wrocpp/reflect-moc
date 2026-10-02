@@ -100,4 +100,41 @@ class Derived : public Base {
   int extra_ = 0;
 };
 
+// signals only: the reflect-moc side writes these as rqt::static_signal members
+class StaticSignals : public QObject {
+  Q_OBJECT
+  Q_PROPERTY(int level READ level WRITE setLevel NOTIFY levelChanged)
+
+ public:
+  explicit StaticSignals(QObject* parent = nullptr) : QObject(parent) {}
+  int level() const { return level_; }
+
+ public slots:
+  void setLevel(int v) {
+    level_ = v;
+    emit levelChanged(v);
+  }
+  void reset() { setLevel(0); }
+
+ signals:
+  void levelChanged(int level);
+  void moved(int from, int to);
+  void done();
+  void labelled(const QString& label);
+
+ private:
+  int level_ = 0;
+};
+
+class DerivedStaticSignals : public StaticSignals {
+  Q_OBJECT
+
+ public:
+  explicit DerivedStaticSignals(QObject* parent = nullptr) : StaticSignals(parent) {}
+  Q_INVOKABLE int twice(int n) const { return 2 * n; }
+
+ signals:
+  void extraChanged(int extra);
+};
+
 }  // namespace viamoc
