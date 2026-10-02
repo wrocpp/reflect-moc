@@ -27,16 +27,33 @@
       "cacheVariables": {
         "REFLECT_MOC_TSAN": "ON"
       }
+    },
+    {
+      "name": "qt",
+      "displayName": "Linux GCC 16 with the Qt layer (the reflect-moc/gcc16-qt610 image)",
+      "inherits": "linux",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/qt",
+      "cacheVariables": {
+        "RQT_BUILD_QT": "ON"
+      }
     }
   ],
   "buildPresets": [
     { "name": "host", "configurePreset": "host" },
     { "name": "linux", "configurePreset": "linux" },
-    { "name": "tsan", "configurePreset": "tsan" }
+    { "name": "tsan", "configurePreset": "tsan" },
+    { "name": "qt", "configurePreset": "qt" }
   ],
   "testPresets": [
     { "name": "host", "configurePreset": "host", "output": { "outputOnFailure": true } },
     { "name": "linux", "configurePreset": "linux", "output": { "outputOnFailure": true } },
-    { "name": "tsan", "configurePreset": "tsan", "output": { "outputOnFailure": true } }
+    { "name": "tsan", "configurePreset": "tsan", "output": { "outputOnFailure": true } },
+    {
+      "name": "qt",
+      "configurePreset": "qt",
+      "output": { "outputOnFailure": true },
+      "execution": { "timeout": 900 }
+    }
   ]
 }
