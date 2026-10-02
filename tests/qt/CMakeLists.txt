@@ -35,6 +35,9 @@ set(RQT_QT_CAPABILITY_TESTS
   capability_signal_to_signal_connect
   capability_static_signal_connect
   capability_static_signal_emit_syntax
+  capability_static_signal_size
+  capability_static_signal_queued
+  capability_static_signal_qml
   limit_parameter_names_must_agree)
 
 # Each must fail to compile, with this text in the compiler's output.
@@ -109,6 +112,18 @@ set_target_properties(capability_data_signals_two_tus PROPERTIES AUTOMOC OFF AUT
 target_include_directories(capability_data_signals_two_tus PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 add_test(NAME capability_data_signals_two_tus COMMAND capability_data_signals_two_tus)
 set_tests_properties(capability_data_signals_two_tus PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen" LABELS qt)
+
+# Static signals of a header class, two translation units, linked with -flto: -Wodr and -Wlto-type-mismatch
+# (with -Werror from the warnings target) must stay silent.
+add_executable(capability_static_signal_two_tus
+  capability_static_signal_two_tus_a.cpp capability_static_signal_two_tus_b.cpp)
+target_link_libraries(capability_static_signal_two_tus PRIVATE ${RQT_QT_LIBS})
+target_compile_options(capability_static_signal_two_tus PRIVATE -flto -Wodr -Wlto-type-mismatch)
+target_link_options(capability_static_signal_two_tus PRIVATE -flto -Wodr -Wlto-type-mismatch -Werror)
+set_target_properties(capability_static_signal_two_tus PROPERTIES AUTOMOC OFF AUTOUIC OFF AUTORCC OFF)
+target_include_directories(capability_static_signal_two_tus PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+add_test(NAME capability_static_signal_two_tus COMMAND capability_static_signal_two_tus)
+set_tests_properties(capability_static_signal_two_tus PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen" LABELS qt)
 
 foreach(name IN LISTS RQT_QT_COMPILE_FAIL_TESTS)
   add_library(${name} OBJECT EXCLUDE_FROM_ALL ${name}.cpp)
