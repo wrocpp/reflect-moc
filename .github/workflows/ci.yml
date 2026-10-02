@@ -1,0 +1,55 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  IMAGE: reflect-moc/gcc16-qt610
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      # The image downloads Qt 6.10.3 with aqtinstall. TARGETARCH makes the
+      # Dockerfile pick linux_gcc_64 on this runner.
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build the image
+        uses: docker/build-push-action@v6
+        with:
+          context: docker
+          load: true
+          tags: ${{ env.IMAGE }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # Core and Qt tests: the differential test against real moc, the
+      # build-failure tests and the no-moc check. The preset sets a 15 minute
+      # limit per test.
+      - name: Core and Qt tests
+        run: |
+          docker run --rm -v "$PWD":/src -w /src "$IMAGE" \
+            sh -c 'cmake --preset qt && cmake --build --preset qt -j"$(nproc)" && ctest --preset qt -j2'
+
+      - name: Tool tests
+        run: |
+          docker run --rm -v "$PWD":/src -w /src "$IMAGE" \
+            sh -c 'cd tools && python3 -m unittest discover -s tests -p "test_*.py"'
+
+      - name: The four ported Qt examples build with no moc and print the moc output
+        run: |
+          docker run --rm -v "$PWD":/src -w /src "$IMAGE" examples/qt/check.sh ported
+
+      # Replaces moc in the container with a failing trap; the script refuses
+      # to run outside a container, and the checkout is mounted read-only.
+      - name: moc trap
+        run: |
+          docker run --rm -v "$PWD":/src:ro -w /src "$IMAGE" sh examples/qt/check_moc_trapped.sh
