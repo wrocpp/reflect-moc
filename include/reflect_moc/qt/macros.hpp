@@ -20,7 +20,7 @@
 // the class body, a complete-class context, so reflection sees every member. The overrides
 // are the ones moc declares, so Qt's own checks (qobject_cast, HasQ_OBJECT_Macro, PMF connect,
 // qmlRegisterType) pass natively.
-#define RQT_OBJECT                                                                                         \
+#define RQT_OBJECT_BASE_                                                                                   \
  public:                                                                                                   \
   static constexpr bool rqt_object_ = true;                                                                \
   static ::QMetaObject const& rqt_meta_() { return ::rqt::meta_of_class<RQT_SELF>(); }                     \
@@ -39,9 +39,20 @@
  private:                                                                                                  \
   static void qt_static_metacall(::QObject* rqt_o, ::QMetaObject::Call rqt_call, int rqt_id, void** rqt_args) { \
     ::rqt::static_call<RQT_SELF>(rqt_o, rqt_call, rqt_id, rqt_args);                                       \
-  }                                                                                                        \
+  }
+
+// RQT_OBJECT: the common part plus the hidden first data member that publishes the owner for the
+// non-static `rqt::signal` members declared after it.
+#define RQT_OBJECT                                                                                         \
+  RQT_OBJECT_BASE_                                                                                         \
+ private:                                                                                                  \
   /* the first data member: it publishes the owner for the signals declared after it */                    \
   ::rqt::owner_anchor<> rqt_anchor_;
+
+// RQT_OBJECT_STATIC: for a class whose signals are all `rqt::static_signal` (or function signals): no anchor
+// member, so the class is exactly as large as its base and its own data. A non-static `rqt::signal` in such a
+// class fails to compile ("needs RQT_OBJECT").
+#define RQT_OBJECT_STATIC RQT_OBJECT_BASE_
 
 // Q_ENUM(Mode), Q_FLAG(Opts) and Q_CLASSINFO("key", "value"): static constexpr holders the library finds
 // by reflection. The enum (and for Q_FLAG the QFlags alias) must already be declared.

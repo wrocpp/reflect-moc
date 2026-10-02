@@ -99,6 +99,13 @@ struct names {
 template <class Sig, meta::info Owner = meta::current_class()>
 struct signal;
 
+// `static inline rqt::static_signal<void(int)> valueChanged{};`: a signal that takes no space in the
+// object. Calling it builds a `pending` emission: `emit valueChanged(v);` or `valueChanged(v).from(obj);`.
+template <class Sig, meta::info Owner = meta::current_class()>
+struct static_signal;
+template <class Sig, meta::info Owner>
+struct pending;
+
 // --- RQT_PROPERTY: the exact Q_PROPERTY text, parsed at compile time ------------------------
 
 inline constexpr std::size_t max_type_length = 128;

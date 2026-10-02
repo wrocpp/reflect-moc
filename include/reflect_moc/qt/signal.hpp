@@ -8,6 +8,9 @@
 //   - the member's own address: its offset in the owner picks the signal from a table built by
 //     reflection, so two members of one signature stay different signals.
 // Each signal's default constructor runs after the anchor, in member order, and keeps the owner.
+//
+// rqt::static_signal<void(A...)> (below) is the opt-in form that takes no space in the object: a static
+// data member whose address is its identity, fired with `emit sig(args);` or `sig(args).from(obj);`.
 #pragma once
 
 #include "object.hpp"
@@ -65,7 +68,7 @@ consteval std::vector<signal_offset> make_signal_offsets(info cls) {
   std::vector<signal_offset> out;
   auto const entries = make_method_entries(cls);
   for (std::size_t i = 0; i < entries.size(); ++i)
-    if (is_data_signal(entries[i].fn))
+    if (is_data_signal(entries[i].fn) && !is_static_signal(entries[i].fn))  // a static signal has no offset
       out.push_back({.offset = static_cast<std::size_t>(meta::offset_of(entries[i].fn).bytes),
                      .index = static_cast<int>(i)});
   return out;
@@ -80,6 +83,32 @@ int signal_index_at(std::size_t offset) {
   for (auto const& e : signal_offsets<Owner>)
     if (e.offset == offset) return e.index;
   signal_without_owner("a signal is not a member of its owner");
+}
+
+consteval std::vector<info> make_static_signals(info owner) {
+  std::vector<info> out;
+  for (auto m : meta::members_of(owner, unchecked))
+    if (is_static_signal(m)) out.push_back(m);
+  return out;
+}
+template <info Owner>
+inline constexpr auto static_signals = std::define_static_array(make_static_signals(Owner));
+
+// The method-table index of the static signal I of Owner, if the object at `p` is that signal.
+template <info Owner, std::size_t I>
+int static_index_if(void const* p) {
+  constexpr info m = static_signals<Owner>[I];
+  return p == static_cast<void const*>(&[:m:]) ? entry_index(Owner, m) : -1;
+}
+
+// The method-table index of the static signal object at `p`: its address picks it from Owner's static members.
+template <info Owner>
+int static_signal_index(void const* p) {
+  return [&]<std::size_t... I>(std::index_sequence<I...>) {
+    int found = -1;
+    ((found = found >= 0 ? found : static_index_if<Owner, I>(p)), ...);
+    return found;
+  }(std::make_index_sequence<static_signals<Owner>.size()>{});
 }
 
 }  // namespace detail
@@ -123,6 +152,57 @@ struct signal<void(A...), Owner> {
   QObject* owner_;
 };
 
+// What `sig(args)` returns: the signal and its arguments, with no side effect. Fire it with
+// `emit sig(args);` (the compat macro) or `sig(args).from(object);`. [[nodiscard]]: a bare `sig(args);`
+// is a warning, so forgetting `emit` does not compile under -Werror.
+template <class... A, meta::info Owner>
+struct [[nodiscard("a signal call only builds the emission: write `emit sig(args);` or `sig(args).from(obj);`")]]
+    pending<void(A...), Owner> {
+  static_signal<void(A...), Owner> const* sig;
+  std::tuple<A...> args;
+
+  template <class O>
+  void from(O* object) && {
+    static_assert(!std::is_const_v<O>,
+                  "rqt: a signal is a non-const member: it cannot be emitted from a const member function or "
+                  "through a const pointer");
+    using Ow = typename[:Owner:];
+    static_assert(std::is_base_of_v<Ow, O>, "rqt: this signal belongs to another class than the object that emits it");
+    int const index = detail::static_signal_index<Owner>(sig);
+    std::apply(
+        [&](auto&... a) {
+          void* argv[] = {nullptr, const_cast<void*>(static_cast<void const*>(std::addressof(a)))...};
+          QMetaObject::activate(static_cast<QObject*>(static_cast<Ow*>(object)), &static_meta_object<Ow>, index, argv);
+        },
+        args);
+  }
+};
+
+// `emit` (compat.hpp) expands to `rqt::emitter{this},`: the comma operator fires a pending emission,
+// and a real Qt signal (a void call) still works through the built-in comma.
+template <class O>
+struct emitter {
+  O* object;
+  constexpr explicit emitter(O* o) : object(o) {}
+};
+template <class O>
+emitter(O*) -> emitter<O>;
+template <class O, class... A, meta::info Owner>
+void operator,(emitter<O> e, pending<void(A...), Owner>&& p) {
+  std::move(p).from(e.object);
+}
+
+// A signal that takes no space in the object: `static inline rqt::static_signal<void(int)> s{};` (it must
+// be `static inline` and non-const: Qt reads its address through a non-const pointer).
+template <class... A, meta::info Owner>
+struct static_signal<void(A...), Owner> {
+  using signature = void(A...);
+  using args_tuple = std::tuple<A...>;
+  constexpr static_signal() = default;
+
+  pending<void(A...), Owner> operator()(A... a) const { return {this, {std::move(a)...}}; }
+};
+
 }  // namespace rqt
 
 // Teach Qt's own connect, QMetaMethod::fromSignal and QSignalSpy about signal data members. QtPrivate is
@@ -145,6 +225,26 @@ struct FunctionPointer<rqt::signal<void(A...), Owner> Obj::*> {
     [&]<std::size_t... I>(std::index_sequence<I...>) {
       (static_cast<Obj*>(receiver)->*f)(
           *reinterpret_cast<std::remove_reference_t<std::tuple_element_t<I, std::tuple<A...>>>*>(arg[I + 1])...);
+    }(std::index_sequence_for<A...>{});
+  }
+};
+}  // namespace QtPrivate
+
+namespace QtPrivate {
+// A pointer to a STATIC signal object: the class is not in the pointer type, so the signal type carries it.
+template <class... A, std::meta::info Owner>
+struct FunctionPointer<rqt::static_signal<void(A...), Owner>*> {
+  using Object = typename[:Owner:];
+  using Arguments = List<A...>;
+  using ReturnType = void;
+  using Function = rqt::static_signal<void(A...), Owner>*;
+  enum { ArgumentCount = sizeof...(A), IsPointerToMemberFunction = true };
+  // used as a slot: emit the receiver's signal
+  template <typename SignalArgs, typename R>
+  static void call(Function f, QObject* receiver, void** arg) {
+    [&]<std::size_t... I>(std::index_sequence<I...>) {
+      (*f)(*reinterpret_cast<std::remove_reference_t<std::tuple_element_t<I, std::tuple<A...>>>*>(arg[I + 1])...)
+          .from(static_cast<Object*>(receiver));
     }(std::index_sequence_for<A...>{});
   }
 };

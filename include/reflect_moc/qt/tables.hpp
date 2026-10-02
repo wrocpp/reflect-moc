@@ -52,8 +52,16 @@ consteval std::string qualified_name(info t) {
 // Qt's method order: every signal, then every slot, then every invokable.
 enum class method_kind { signal_, slot_, invokable_, none };
 
-// A signal declared as a bodyless data member: `rqt::signal<void(int)> valueChanged;`.
+// A signal declared as a static data member: `static inline rqt::static_signal<void(int)> valueChanged{};`.
+consteval bool is_static_signal(info m) {
+  if (!meta::is_variable(m)) return false;
+  info const t = meta::remove_cvref(meta::type_of(m));
+  return meta::has_template_arguments(t) && meta::template_of(t) == ^^static_signal;
+}
+
+// A signal declared as a bodyless data member: `rqt::signal<void(int)> valueChanged;` (or a static one).
 consteval bool is_data_signal(info m) {
+  if (is_static_signal(m)) return true;
   if (!meta::is_nonstatic_data_member(m)) return false;
   info const t = meta::remove_cvref(meta::type_of(m));
   return meta::has_template_arguments(t) && meta::template_of(t) == ^^signal;
@@ -140,7 +148,7 @@ consteval std::vector<method_entry> make_method_entries(info cls) {
   for (auto kind : {method_kind::signal_, method_kind::slot_, method_kind::invokable_})
     for (auto m : meta::members_of(cls, unchecked))
       if (kind_of(m) == kind) {
-        if (meta::is_static_member(m)) throw meta::exception("rqt: a signal, slot or invokable cannot be static", m);
+        if (meta::is_static_member(m) && !is_static_signal(m)) throw meta::exception("rqt: a signal, slot or invokable cannot be static", m);
         append_entries(out, m);
       }
   return out;

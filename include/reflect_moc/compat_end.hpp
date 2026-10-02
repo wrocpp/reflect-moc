@@ -7,3 +7,5 @@
 #pragma pop_macro("Q_ENUM")
 #pragma pop_macro("Q_FLAG")
 #pragma pop_macro("Q_CLASSINFO")
+#pragma pop_macro("emit")
+#pragma pop_macro("Q_EMIT")

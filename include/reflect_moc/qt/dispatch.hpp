@@ -56,7 +56,9 @@ decltype(auto) member_ref(C* self) {
 // Calls a slot, an invokable or a signal; calling a signal data member activates it.
 template <info Fn, class C, class... A>
 decltype(auto) call(C* self, A&&... a) {
-  if constexpr (is_data_signal(Fn)) {
+  if constexpr (is_static_signal(Fn)) {
+    return [:Fn:](std::forward<A>(a)...).from(self);
+  } else if constexpr (is_data_signal(Fn)) {
     return member_ref<Fn>(self)(std::forward<A>(a)...);
   } else if constexpr (meta::is_public(Fn)) {
     return self->[:Fn:](std::forward<A>(a)...);  // default arguments apply, which a pointer to member cannot give
