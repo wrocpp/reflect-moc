@@ -36,7 +36,9 @@ function(rqt_build_must_fail name source regex)
   target_link_libraries(${name}_build PRIVATE reflect_moc::core)
   add_test(NAME ${name}
     COMMAND ${CMAKE_COMMAND} --build ${CMAKE_BINARY_DIR} --target ${name}_build --config $<CONFIG>)
-  set_tests_properties(${name} PROPERTIES PASS_REGULAR_EXPRESSION "${regex}" LABELS build-fail)
+  # These tests run `cmake --build` on this build tree; two at once corrupt ninja's dyndep files.
+  set_tests_properties(${name} PROPERTIES PASS_REGULAR_EXPRESSION "${regex}" LABELS build-fail
+    RESOURCE_LOCK rqt_build_tree)
 endfunction()
 
 rqt_build_must_fail(capability_connect_by_name_rejects_typo

@@ -143,7 +143,9 @@ foreach(name IN LISTS RQT_QT_COMPILE_FAIL_TESTS)
   target_link_libraries(${name} PRIVATE ${RQT_QT_LIBS})
   set_target_properties(${name} PROPERTIES AUTOMOC OFF AUTOUIC OFF AUTORCC OFF)
   add_test(NAME ${name} COMMAND ${CMAKE_COMMAND} --build ${CMAKE_BINARY_DIR} --target ${name})
-  set_tests_properties(${name} PROPERTIES PASS_REGULAR_EXPRESSION "${${name}_MESSAGE}" LABELS qt-limit)
+  # These tests run `cmake --build` on this build tree; two at once corrupt ninja's dyndep files.
+  set_tests_properties(${name} PROPERTIES PASS_REGULAR_EXPRESSION "${${name}_MESSAGE}" LABELS qt-limit
+    RESOURCE_LOCK rqt_build_tree)
 endforeach()
 
 # The no-moc check: rebuild one class from scratch and read the whole log.
@@ -154,4 +156,4 @@ set_target_properties(rqt_no_moc_probe PROPERTIES AUTOMOC OFF AUTOUIC OFF AUTORC
 add_test(NAME capability_no_moc_in_build
   COMMAND ${CMAKE_COMMAND} -DBUILD_DIR=${CMAKE_BINARY_DIR} -DTARGET=rqt_no_moc_probe
           -P ${CMAKE_CURRENT_SOURCE_DIR}/check_no_moc.cmake)
-set_tests_properties(capability_no_moc_in_build PROPERTIES LABELS qt)
+set_tests_properties(capability_no_moc_in_build PROPERTIES LABELS qt RESOURCE_LOCK rqt_build_tree)
