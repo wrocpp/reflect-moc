@@ -20,6 +20,8 @@ variants that do not work sit behind `-DSPIKE_*` probe macros, and
 | 05 | signal forms (a) current_function, (b) descriptor | both work | (a) blocked, (b) works |
 | 06 | real Qt 6.10 without moc | works: moc-free meta-object from reflection, QML included (4 workarounds) | not tried |
 | 07 | non-template base + deducing this, no CRTP | works; qobject_cast / PMF connect / qmlRegisterType need a 2-line opt-in | not tried |
+| 08 | zero-size NON-static signal members | does not work with stock Qt connect (signals at one offset collide) | not tried |
+| 09 | static signal objects, fired with `emit s(v)` | works: 0 bytes per signal, stock connect, one silent pitfall | not tried |
 
 ## Shared differences
 
@@ -387,3 +389,77 @@ templated on the BASE only, with this spike's dispatch. Bind with E3 (or E2)
 by default, so QML-created subclasses work. Offer the 2-line `staticMetaObject`
 opt-in for `qobject_cast`, PMF connect and `qmlRegisterType`, plus
 `rqt::cast` and `rqt::connect` for classes that skip it.
+
+## 08 Zero-size non-static signals
+
+Dated 2026-10-02. Question: can a signal stay a non-static data member and cost 0 bytes (no owner pointer, no
+anchor)?
+
+Variants built on a patched copy of the headers (no `rqt_anchor_`, the signal type made unique per member by a
+string template argument, `RQT_SIGNAL(void(int), name)` declaring `rqt::signal<void(int), "name"> name`):
+
+- Z: the member is `[[no_unique_address]]`, so it takes no space.
+- Z1: the same without `[[no_unique_address]]`: each member is 1 byte.
+
+| check | Z | Z1 |
+|---|---|---|
+| `sizeof` of a `QObject` class with such members | 16 | 16 plus 1 byte per signal, padded |
+| the runtime tests (property, QML, queued, string connect, qobject_cast, ...) | pass | pass |
+| `capability_signal_to_signal_connect` | fails (return code 1) | passes |
+| `connect(&o, &W::second, ...)`, then fire `first(7)` | the `second` handler runs: `h2=7` | not shown, offsets differ |
+| `QMetaMethod::fromSignal(&W::second).methodIndex()` against `indexOfSignal("second(int)")` | 4 against 5 | not shown |
+
+Why a zero-size member cannot work with stock Qt connect. Qt does not ask the signal member which signal it is:
+for `connect(&o, &W::second, ...)` it passes the raw bytes of the pointer to data member into the meta-object's
+`IndexOfMethod` call, and `QtMocHelpers::indexOfMethod` (qtmochelpers.h) compares those bytes with the pointer to
+member of each signal. Members that take no space can sit at the same offset, so two signals give **equal bytes**:
+the first match wins and the second signal is unreachable. A member with a size has its own offset (Z1), which is
+why the owner-anchor design keeps one pointer per signal.
+
+Deducing this (spike 07) recovers the owner of a call, but it cannot distinguish the signals: `o.first(1)` and
+`o.second(1)` deduce the same object and the same call shape. What is missing is an identity per signal, not the
+owner. Z1 has the identity and still costs a byte (rounded up by alignment).
+
+Verdict: a non-static signal member needs a distinct address, so a size. The anchor design (8 bytes per signal and
+8 per class) is the minimum for non-static members. See 09 for a form with an identity and no size.
+
+## 09 Static signal objects
+
+Dated 2026-10-02. Question: can a signal be a static member, identified by its address, so that an object carries
+nothing for it?
+
+Two variants were built on a patched copy of the headers. S: `sig(this, v)` returns void and fires at once.
+P: `sig(v)` returns a `[[nodiscard]]` `pending` object, and `emit sig(v);` (the macro `emit` expands to
+`::rqt::emitter{this},` and a comma operator fires it) or `sig(v).from(obj)` fires it. P was adopted.
+
+| check | result for P |
+|---|---|
+| `sizeof` of a class with 4 static signals, no anchor | 16 (S: 16 as well) |
+| `emit` as in Qt (`emit s(v);`) | works (S needs `s(this, v)`) |
+| stock pointer-to-member `connect`, lambda, signal to signal, `QMetaMethod::fromSignal` | works |
+| inherited class, signals of the base and the derived | works |
+| a header class in two translation units, `-flto -Wodr -Wlto-type-mismatch -Werror` | works |
+| a real Qt signal (`emit destroyed(nullptr)`) next to it | works: a void call joins the built-in comma |
+| bare `s(1);` | `-Werror=unused-result` (nodiscard) |
+| `emit` in a static member function | `'this' is unavailable for static member functions` |
+| `emit other->s(v)`, `other` another instance of the same class | fires on `this`, silently (S: the same) |
+| `emit` between Qt headers and `compat_end.hpp`, then more Qt headers | builds and runs (q4) |
+
+How it works. The signal's type is `static_signal<void(A...), Owner>`; `Owner` defaults to
+`std::meta::current_class()` at the declaration, so the type names its class and Qt's `FunctionPointer`
+specialization for the pointer to the signal object gets `Object = typename[:Owner:]` from it. The index is found
+by comparing the object's address with the address of each static signal of the class (`static_index_if`, a fold
+over the reflected static members). The member must be `static inline` (one object per program) and non-const:
+`static constexpr` fails inside Qt, which `reinterpret_cast`s the pointer through a non-const type
+(`reinterpret_cast ... casts away qualifiers`).
+
+A variant in which `operator()` is a template over a member tag type and splices the owner from it failed with
+`'sigbase<void(int)>::operator()<Owner::a_t>' is not usable in a splice type` and
+`'what()': 'not a complete class type'`.
+
+Emit cost, without any connection, 10 million emits, `-O2`, one run, a loaded Mac (noisy): see
+`docs/measurements.md`. In the spike run: non-static 8.2 and 10.1 ns (first and last signal), S 6.9 and 6.8 ns,
+P 8.5 and 9.1 ns; zero-size 8.1 and 7.4 ns, which is wrong anyway (08).
+
+Verdict: works. Shipped as `rqt::static_signal` beside the unchanged `rqt::signal`, with `RQT_OBJECT_STATIC`
+for classes that want the 16-byte size (the anchor member of `RQT_OBJECT` is 8 bytes with padding).
