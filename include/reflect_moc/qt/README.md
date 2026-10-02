@@ -41,13 +41,78 @@ class Sensor : public QObject {
 - Besides `RQT_PROPERTY`: `RQT_ENUM(E)`, `RQT_FLAG(Flags)` and `RQT_CLASSINFO("key", "value")`. A base with
   a `Q_DECLARE_INTERFACE` id is answered by `qt_metacast` with no `Q_INTERFACES` line.
 - `#include <reflect_moc/compat.hpp>` after the Qt headers maps `Q_OBJECT`, `Q_PROPERTY`, `Q_INVOKABLE`,
-  `Q_ENUM`, `Q_FLAG` and `Q_CLASSINFO` to these, so a moc class compiles with its macros unchanged
+  `Q_ENUM`, `Q_FLAG` and `Q_CLASSINFO` to these, and `emit`/`Q_EMIT` to `::rqt::emitter{this},` (it fires an
+  `rqt::static_signal` call, and a Qt signal call still works), so a moc class compiles with its macros unchanged
   (`reflect_moc/compat_end.hpp` hands them back). Slots and signals still need `[[=rqt::slot]]` and an
   `rqt::signal` member; `Q_GADGET`, `Q_NAMESPACE`, `Q_PLUGIN_METADATA`, `QML_ELEMENT` are not mapped.
 - Qt classes, QML: a class with `RQT_OBJECT` is accepted by `qobject_cast`, pointer-to-member and functor
   connect and `qmlRegisterType<T>`/`rqt::register_qml<T>` with no opt-in (`capability_qt_like_syntax`,
   `capability_static_metaobject_one_line`). The meta-object equals the one moc generates for the same
   class (`capability_differential_against_moc`).
+
+## Signals that take no space
+
+`rqt::signal<void(int)> s;` is the default and stays: it is a data member that keeps an owner pointer.
+For a class where object size matters (many instances) there is an opt-in form that costs 0 bytes per
+object, a static member:
+
+```cpp
+class Sensor : public QObject {
+  RQT_OBJECT_STATIC                       // RQT_OBJECT without the anchor member (see the table)
+ public:
+  void setLevel(int v) { emit levelChanged(v); }          // with reflect_moc/compat.hpp
+ signals:
+  [[= rqt::names("level")]] static inline rqt::static_signal<void(int)> levelChanged{};
+};
+```
+
+Measured (`capability_static_signal_size`, GCC 16.2, Linux aarch64; `sizeof(QObject)` is 16):
+
+| class | `sizeof` | per signal | per class |
+|---|---|---|---|
+| 1 non-static `rqt::signal` (`RQT_OBJECT`) | 32 | 8 | 8 (anchor, with padding) |
+| 3 non-static signals (`RQT_OBJECT`) | 48 | 8 | 8 |
+| 3 `static_signal` (`RQT_OBJECT_STATIC`) | 16 | 0 | 0 |
+| 3 `static_signal` (`RQT_OBJECT`) | 24 | 0 | 8 |
+| 1 non-static + 2 static (`RQT_OBJECT`) | 32 | 8 / 0 | 8 |
+
+A class with only static signals writes `RQT_OBJECT_STATIC`: the anchor member is what costs the 8 bytes
+per class, and a static signal does not need it. A non-static `rqt::signal` in an `RQT_OBJECT_STATIC` class
+stops the build ("rqt::signal needs RQT_OBJECT, first in the class"). `RQT_OBJECT` accepts static and
+non-static signals in one class; `RQT_OBJECT` and `rqt::signal` are unchanged by all this.
+
+How it is used:
+
+- Declare it `static inline` and non-const. `static constexpr` fails inside Qt (a `reinterpret_cast` that
+  casts away `const`). The owner class is the third template argument, defaulted to the class it is declared in.
+- Stock Qt works with `&Sensor::levelChanged`: pointer-to-member and lambda `connect`, signal to signal,
+  `disconnect`, `QMetaMethod::fromSignal`, string `SIGNAL`/`SLOT`, `invokeMethod`, queued connections and
+  QML (`capability_static_signal_connect`, `_queued`, `_qml`). The meta-object equals moc's
+  (`capability_differential_against_moc`). A signal's index is found by comparing its address with the
+  class's static signals, in declaration order.
+- **Fire it with `emit sig(v);`** (`reflect_moc/compat.hpp` defines `emit` and `Q_EMIT` as
+  `::rqt::emitter{this},`) **or `sig(v).from(object);`.** Calling `sig(v)` only builds the emission: the
+  result is `[[nodiscard]]`, so a bare `sig(v);` is an error under `-Werror`
+  (`limit_static_signal_missing_emit`). The explicit `.from(obj)` is required where there is no `this`: from
+  outside the class, from a non-QObject, from a free function, from a lambda that does not capture `this`.
+  `emit` inside a static member function is `'this' is unavailable for static member functions`.
+- `.from(obj)` checks at compile time that `obj` is the owner class or derives from it ("this signal belongs to
+  another class than the object that emits it") and that it is not const ("a signal is a non-const member:
+  it cannot be emitted from a const member function or through a const pointer").
+
+**The one silent failure.** A static member is one object for the whole class, so `emit other->sig(v)` where
+`other` is another instance of the same class compiles and fires on `this`, not on `other` (Qt's own signals
+fire on `other`). Write `sig(v).from(other);`. The test `limit_static_signal_other_instance` pins it, and
+`tools/rqt-lint-emit.py` flags the line. An `emit` of a real Qt signal through another object is a void call
+and keeps Qt's meaning.
+
+`emit` caveats: include `reflect_moc/compat.hpp` after every Qt header (it replaces `emit`, `Q_EMIT` and the
+`Q_OBJECT` family until `compat_end.hpp`). `-DQT_NO_KEYWORDS` is untested with the compat `emit`. A lambda
+that captures `this` implicitly with `[=]` is a `-Wdeprecated` error under `-Werror` (C++20): write `[this]`
+(`[&]` and `[this]` are tested). `rqt::connect(a, &A::s, b, &A::t)` does not accept a static signal
+(`no matching function for call to 'connect(A*&, rqt::static_signal<void(int)>*, ...)'`); use `QObject::connect`.
+A private static signal compiles and works through `emit` and a string `SIGNAL` connect (a pointer to it cannot
+be named outside the class). A class template fails to build, as it does with a non-static signal.
 
 **Migration note.** The annotation `[[=rqt::signal]]` no longer exists: `rqt::signal` is now the class
 template of the data-member form. Write `[[=rqt::signal_function]]` for the body form, and
@@ -255,7 +320,9 @@ The type must be declared with `Q_DECLARE_METATYPE` or be a Qt-known type.
   with no owner prints a message and aborts); an rqt class declared as a MEMBER between
   `RQT_OBJECT` and a signal would overwrite the published owner (same message); a class with a
   virtual base is not supported. Signals need `RQT_OBJECT` (a mixin class `rqt::Object<B>` has no anchor).
-- **Size.** One pointer per signal, plus one byte for the anchor. `[[no_unique_address]]` has no use here.
+- **Size.** One pointer per signal, plus one byte for the anchor (8 with padding). `[[no_unique_address]]` has no use
+  here. A class that needs neither writes `rqt::static_signal` members under `RQT_OBJECT_STATIC` and pays
+  nothing: see "Signals that take no space".
 - **A signal as the receiver of a connect** (`connect(a, &A::s, b, &B::t)` with `t` a signal member) emits
   `t` once per `s`; the receiver's arguments are a prefix of the sender's. `QObject::disconnect(a, &A::s, b, &B::t)`
   for that pair cannot match: Qt implements its Compare call only for pointers to member functions. Disconnect
