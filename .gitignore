@@ -1,6 +1,18 @@
+# build trees and logs
 build/
+build-*/
+build-logs/
 *.o
 a.out
-.DS_Store
-build-examples/
+
+# core dumps (a 1.4 MB one once got committed)
 core
+!core/
+core.[0-9]*
+
+# editor and OS leftovers
+*.bak
+*.orig
+.DS_Store
+.vscode/
+.astro/
