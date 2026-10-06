@@ -33,6 +33,16 @@ harness_of() {
     queuedcustomtype) echo queuedcustomtype_harness ;;
   esac
 }
+# The mandelbrot kernel (a1*a1 - b1*b1 + ax) is contracted into fused
+# multiply-adds on aarch64 by default and not on x86-64, which moves the
+# escape-time of chaotic pixels and so the image checksums. Contraction off
+# makes the output the same on both.
+cxx_flags_of() {
+  case "$1" in
+    mandelbrot) echo "$warning_flags -ffp-contract=off" ;;
+    *) echo "$warning_flags" ;;
+  esac
+}
 app_of() {
   case "$1" in
     birthdayparty) echo valuesource ;;
@@ -47,7 +57,7 @@ for name in "$@"; do
   echo "=== $name ($variant)"
   rm -rf "$bin"
   start=$(date +%s)
-  if ! { cmake -S "$src" -B "$bin" -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS="$warning_flags" &&
+  if ! { cmake -S "$src" -B "$bin" -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS="$(cxx_flags_of "$name")" &&
          cmake --build "$bin" --verbose; } > "$log" 2>&1; then
     echo "BUILD FAILED (log: $log)"
     grep -E 'error|Error' "$log" | head -40
