@@ -6,8 +6,9 @@ declare signals as data members.
 
 ## Status
 
-Experimental. It has been verified only on GCC 16.2.0 and Qt 6.10.3, on aarch64 Linux in Docker with the
-offscreen platform plugin. It has not been tested on x86_64, on other Qt versions, with clang or with MSVC.
+Experimental. It has been verified on GCC 16.2.0 and Qt 6.10.3, on aarch64 Linux in Docker with the
+offscreen platform plugin (all measurements and baselines) and on x86_64 Linux in the GitHub Actions
+job `test` (see `.github/workflows/ci.yml`). It has not been tested with other Qt versions, with clang or with MSVC.
 
 ## A class with no moc
 

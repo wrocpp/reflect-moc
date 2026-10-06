@@ -2,10 +2,10 @@ meta RenderThread : QThread
   public signal void renderedImage(QImage,double)(image,scaleFactor)
 image 0: 160x120 scale=0.00403897 Pass 1/4, max iterations: 96 checksum=34a81194b412c7d5
 image 1: 160x120 scale=0.00403897 Pass 2/4, max iterations: 288 checksum=be42db4a7db17ffc
-image 2: 160x120 scale=0.00403897 Pass 3/4, max iterations: 1056 checksum=d197fb278b41fb95
-image 3: 160x120 scale=0.00403897 Pass 4/4, max iterations: 4128 checksum=0a1528d02deea70a
+image 2: 160x120 scale=0.00403897 Pass 3/4, max iterations: 1056 checksum=ad7721c7be7eb6e5
+image 3: 160x120 scale=0.00403897 Pass 4/4, max iterations: 4128 checksum=f9290e9fc019e94e
 image 4: 160x120 scale=0.002019485 Pass 1/4, max iterations: 96 checksum=b02239959c58cdd3
 image 5: 160x120 scale=0.002019485 Pass 2/4, max iterations: 288 checksum=4cbb6f5fd9b54ae3
-image 6: 160x120 scale=0.002019485 Pass 3/4, max iterations: 1056 checksum=8c4bb8370f77f1a1
-image 7: 160x120 scale=0.002019485 Pass 4/4, max iterations: 4128 checksum=260b35232632c4db
+image 6: 160x120 scale=0.002019485 Pass 3/4, max iterations: 1056 checksum=f2ce7ef63727a0b2
+image 7: 160x120 scale=0.002019485 Pass 4/4, max iterations: 4128 checksum=f34ac7c39e843f3f
 received 8 images, 0 delivered off the GUI thread
