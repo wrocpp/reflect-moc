@@ -10,8 +10,9 @@ Include `<reflect_moc/qt/qt.hpp>`. Everything lives in namespace `rqt`.
 - `QT_NO_KEYWORDS` is optional. The library spells `rqt::activate`, never `emit`, so Qt's
   `emit`, `signals` and `slots` stay usable. (With `QT_NO_KEYWORDS`, `rqt::emit` remains as an alias.)
 - `CMAKE_AUTOMOC` stays OFF. The library never needs `moc`.
-- GCC 16.2 only (`std::meta::current_function`, `current_class`, `offset_of` and
-  `std::meta::exception` do not exist in clang-p2996).
+- GCC 16.2 only. The library uses `std::meta::current_function`, `current_class` and
+  `std::meta::exception`, which are not declared in Compiler Explorer's clang-p2996 build
+  (`clang_bb_p2996`, tested 6 October 2026); `offset_of` is declared there and compiles.
 
 ## Qt-like syntax (the main form)
 
