@@ -4,6 +4,8 @@
 // runs in fatal mode throughout, so a violation of the model contract aborts the test.
 #include "observable_models_support.hpp"
 
+#include <container_model.hpp>
+
 #include <QtCore/QCoreApplication>
 #include <QtTest/QAbstractItemModelTester>
 
@@ -24,7 +26,7 @@ bool stress(const char* name) {
   int refused = 0;
   for (const unsigned seed : kSeeds) {
     std::unique_ptr<QAbstractItemModelTester> tester;
-    const auto report = observable_test::run_random<C>(seed, kSteps, [&](observable::ObservableContainer<C>* source) {
+    const auto report = observable_test::run_random<C, observable::ObservableContainer<C>>(seed, kSteps, [&](observable::ObservableContainer<C>* source) {
       auto model = std::make_unique<observable::ContainerModel<C>>(
           source, [](const Key& key, const Value& value) { return QVariant(observable_test::Make<C>::shown(key, value)); });
       tester = std::make_unique<QAbstractItemModelTester>(model.get(), QAbstractItemModelTester::FailureReportingMode::Fatal);

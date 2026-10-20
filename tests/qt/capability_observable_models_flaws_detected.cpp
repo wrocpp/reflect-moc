@@ -18,7 +18,7 @@ constexpr observable_test::Flaw kFlaws[] = {
 }  // namespace
 
 static observable_test::Report run(observable_test::Flaw flaw) {
-  return observable_test::run_random<QList<observable_test::Sample>>(
+  return observable_test::run_random<QList<observable_test::Sample>, observable::ObservableContainer<QList<observable_test::Sample>>>(
       kSeed, kSteps, [flaw](observable::ObservableContainer<QList<observable_test::Sample>>* source) {
         return std::make_unique<observable_test::FlawedListModel>(source, flaw);
       },

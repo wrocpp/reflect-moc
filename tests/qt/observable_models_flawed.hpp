@@ -5,6 +5,8 @@
 
 #include "observable_models_support.hpp"
 
+#include <container_model.hpp>
+
 #include <QtCore/QAbstractListModel>
 
 namespace observable_test {
