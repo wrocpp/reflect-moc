@@ -44,7 +44,7 @@ class Sensor : public QObject {
   and adds `RQT_OBJECT` and signals of its own. See "Class templates".
 - `RQT_CLASS_NAME("name")` or `[[=rqt::class_name{"name"}]]` sets the class name Qt reports. Without one a class
   is named by its identifier, and a specialization by the compiler's spelling (`display_string_of`, which is
-  implementation-defined: GCC 16.2 writes `ObservableContainer<QHash<unsigned int, Sample> >`).
+  implementation-defined: GCC 16.2 writes `ObservableContainer<QHash<unsigned int, Sample> >`, which is normalized to `ObservableContainer<QHash<uint,Sample>>` the way `QMetaObject::normalizedType` does, because Qt aborts on a pointer type whose name it would normalize differently).
 - Besides `RQT_PROPERTY`: `RQT_ENUM(E)`, `RQT_FLAG(Flags)` and `RQT_CLASSINFO("key", "value")`. A base with
   a `Q_DECLARE_INTERFACE` id is answered by `qt_metacast` with no `Q_INTERFACES` line.
 - `#include <reflect_moc/compat.hpp>` after the Qt headers maps `Q_OBJECT`, `Q_PROPERTY`, `Q_INVOKABLE`,

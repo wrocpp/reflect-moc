@@ -6,7 +6,9 @@
 
 #include <QtCore/QAbstractListModel>
 
+#include <algorithm>
 #include <functional>
+#include <vector>
 
 namespace observable_qv {
 
@@ -20,10 +22,16 @@ class ContainerModel : public QAbstractListModel {
   using Formatter = std::function<QVariant(const Key&, const Value&)>;
 
   static constexpr int KeyRole = Qt::UserRole;
+  // A list entry has no identity but its row, which shifts under every insert and remove without a signal,
+  // so a role that answered with it would go stale in a sorting proxy. Lists do not offer the role.
+  static constexpr bool hasKeyRole = Traits::order != observable::Order::indexed;
 
   ContainerModel(Source* source, Formatter formatter, QObject* parent = nullptr)
       : QAbstractListModel(parent), m_source(source), m_formatter(std::move(formatter)) {
-    if constexpr (Traits::order == observable::Order::unordered) m_order = Traits::keys(source->items());
+    if constexpr (Traits::order == observable::Order::unordered) {
+      const auto keys = Traits::keys(source->items());
+      m_order.assign(keys.begin(), keys.end());
+    }
     connectSource();
   }
 
@@ -34,21 +42,21 @@ class ContainerModel : public QAbstractListModel {
   QVariant data(const QModelIndex& index, int role = Qt::DisplayRole) const override {
     if (!index.isValid() || index.row() >= rowCount()) return {};
     const Key key = keyAt(index.row());
-    if (role == KeyRole) return QVariant::fromValue(key);
+    if (role == KeyRole && hasKeyRole) return QVariant::fromValue(key);
     if (role == Qt::DisplayRole) return m_formatter(key, m_source->value(key));
     return {};
   }
 
   QHash<int, QByteArray> roleNames() const override {
     auto names = QAbstractListModel::roleNames();
-    names.insert(KeyRole, "key");
+    if (hasKeyRole) names.insert(KeyRole, "key");
     return names;
   }
 
  private:
   Key keyAt(qsizetype row) const {
     if constexpr (Traits::order == observable::Order::unordered)
-      return m_order.at(row);
+      return m_order[static_cast<std::size_t>(row)];
     else
       return Traits::key_at(m_source->items(), row);
   }
@@ -56,7 +64,7 @@ class ContainerModel : public QAbstractListModel {
   // The row of a key that is in the container now.
   qsizetype rowOf(const Key& key) const {
     if constexpr (Traits::order == observable::Order::unordered)
-      return m_order.indexOf(key);
+      return std::find(m_order.begin(), m_order.end(), key) - m_order.begin();
     else
       return Traits::row_of(m_source->items(), key);
   }
@@ -64,7 +72,7 @@ class ContainerModel : public QAbstractListModel {
   // The row a key that is not in the container yet will occupy.
   qsizetype rowToInsert(const Key& key) const {
     if constexpr (Traits::order == observable::Order::unordered)
-      return m_order.size();
+      return static_cast<qsizetype>(m_order.size());
     else
       return Traits::insert_row(m_source->items(), key);
   }
@@ -77,7 +85,7 @@ class ContainerModel : public QAbstractListModel {
     });
     connect(m_source, &ContainerSignals::entryAdded, this, [this](const QVariant& boxed) {
       const Key key = boxed.value<Key>();
-      if constexpr (Traits::order == observable::Order::unordered) m_order.append(key);
+      if constexpr (Traits::order == observable::Order::unordered) m_order.push_back(key);
       endInsertRows();
     });
 
@@ -87,7 +95,7 @@ class ContainerModel : public QAbstractListModel {
       beginRemoveRows(QModelIndex(), m_pendingRow, m_pendingRow);
     });
     connect(m_source, &ContainerSignals::entryRemoved, this, [this](const QVariant&) {
-      if constexpr (Traits::order == observable::Order::unordered) m_order.removeAt(m_pendingRow);
+      if constexpr (Traits::order == observable::Order::unordered) m_order.erase(m_order.begin() + m_pendingRow);
       endRemoveRows();
     });
 
@@ -118,7 +126,7 @@ class ContainerModel : public QAbstractListModel {
 
   Source* m_source;
   Formatter m_formatter;
-  QList<Key> m_order;  // unordered containers only
+  std::vector<Key> m_order;  // unordered containers only; a vector, because std::find scans it the same way wherever the code lands
   int m_pendingRow = -1;
 };
 

@@ -14,6 +14,7 @@
 
 #include <QtCore/QObject>
 
+#include <type_traits>
 #include <utility>
 
 namespace observable {
@@ -26,6 +27,13 @@ class ObservableContainer : public QObject {
   using Traits = ContainerTraits<C>;
   using Key = typename Traits::Key;
   using Value = typename Traits::Value;
+
+  // A model begins its row change at the "about" signal and ends it at the other one. A Qt container allocates
+  // inside the insert, so nothing can be prepared before the announcement, and Qt does not support an exception
+  // that leaves a slot half done. What can be refused is a value whose own move can throw.
+  static_assert(std::is_nothrow_move_constructible_v<Value> && std::is_nothrow_move_assignable_v<Value>,
+                "observable::ObservableContainer: the value type must be nothrow move constructible and assignable, "
+                "because a throw between the 'about' and the 'done' signal leaves every model mid-change");
 
   explicit ObservableContainer(QObject* parent = nullptr) : QObject(parent) {}
   explicit ObservableContainer(C items, QObject* parent = nullptr) : QObject(parent), m_items(std::move(items)) {}

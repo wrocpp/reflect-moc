@@ -18,7 +18,7 @@ reflect-moc (GCC 16.2, Qt 6.10).
 
 | container | the key is | row order |
 |---|---|---|
-| `QList<T>`, `QQueue<T>`, `QStack<T>`, `QStringList` | the index | the index |
+| `QList<T>`, `QQueue<T>`, `QStack<T>`, `QStringList` | the index (the model offers no key role: the row is the identity, and it shifts without a signal) | the index |
 | `QMap<K, V>` | the key | the key order |
 | `QHash<K, V>`, `QSet<K>` | the key | the order entries were added (the model keeps a key list) |
 

@@ -14,6 +14,7 @@
 #include <QtCore/QAbstractItemModel>
 #include <QtCore/QItemSelectionModel>
 #include <QtCore/QPersistentModelIndex>
+#include <QtCore/QSortFilterProxyModel>
 #include <QtCore/QSet>
 #include <QtCore/QString>
 #include <QtCore/QStringList>
@@ -115,6 +116,11 @@ class ModelWatcher : public QObject {
     connect(model, &M::modelReset, this, [this] {
       if (m_open != Open::reset) violation("modelReset without modelAboutToBeReset");
       m_open = Open::none;
+      m_rows = readAll();
+      m_announcedCount = m_model->rowCount();
+    });
+    // A proxy that re-sorts after a value changed says so with layoutChanged; a view then reads every row again.
+    connect(model, &M::layoutChanged, this, [this] {
       m_rows = readAll();
       m_announcedCount = m_model->rowCount();
     });
@@ -297,9 +303,12 @@ struct Report {
 
 // Applies `steps` random changes to a container, and after each one compares the container, the model, the
 // view mirror, the selection and a persistent index with the reference. With `stop_at_first_violation` it
-// returns as soon as the watcher reports something.
+// returns as soon as the watcher reports something. With `with_proxy` a QSortFilterProxyModel sorted by key sits
+// on the model: it re-reads the model from the same signals, so a wrong announcement leaves its rows out of
+// order or out of step, and a second watcher mirrors it.
 template <class C, class Source, class MakeModel>
-Report run_random(unsigned seed, int steps, MakeModel&& make_model, bool stop_at_first_violation = false) {
+Report run_random(unsigned seed, int steps, MakeModel&& make_model, bool stop_at_first_violation = false,
+                  bool with_proxy = false) {
   using Traits = observable::ContainerTraits<C>;
   using Key = typename Traits::Key;
 
@@ -307,6 +316,15 @@ Report run_random(unsigned seed, int steps, MakeModel&& make_model, bool stop_at
   std::unique_ptr<QAbstractItemModel> model = make_model(&source);
   ModelWatcher watcher(model.get(), Traits::order != observable::Order::indexed);
   QItemSelectionModel selection(model.get());
+  std::unique_ptr<QSortFilterProxyModel> proxy;
+  std::unique_ptr<ModelWatcher> proxyWatcher;
+  if (with_proxy) {
+    proxy = std::make_unique<QSortFilterProxyModel>();
+    proxy->setSortRole(Traits::order == observable::Order::indexed ? Qt::DisplayRole : kKeyRole);
+    proxy->setSourceModel(model.get());
+    proxy->sort(0);
+    proxyWatcher = std::make_unique<ModelWatcher>(proxy.get(), Traits::order != observable::Order::indexed);
+  }
   QPersistentModelIndex tracked;
   std::optional<int> trackedId;
   QSet<int> selectedIds;
@@ -380,6 +398,23 @@ Report run_random(unsigned seed, int steps, MakeModel&& make_model, bool stop_at
     // A wrong adapter can leave Qt's own bookkeeping unbalanced, so a control run stops where the fault shows.
     if (stop_at_first_violation && !watcher.clean()) break;
 
+    if (proxy) {
+      proxyWatcher->check();
+      if (stop_at_first_violation && !proxyWatcher->clean()) break;
+      // The proxy lists the reference's rows ordered by key, and shows their values.
+      std::vector<typename Shadow<C>::Row> sorted = shadow.rows();
+      if constexpr (Traits::order == observable::Order::indexed)
+        std::stable_sort(sorted.begin(), sorted.end(), [](const auto& a, const auto& b) { return a.value < b.value; });
+      else
+        std::stable_sort(sorted.begin(), sorted.end(), [](const auto& a, const auto& b) { return a.key < b.key; });
+      expect(proxy->rowCount() == static_cast<int>(sorted.size()));
+      for (int row = 0; row < proxy->rowCount() && row < static_cast<int>(sorted.size()); ++row) {
+        expect(proxy->index(row, 0).data(Qt::DisplayRole).toInt() == sorted[static_cast<std::size_t>(row)].value);
+        if constexpr (Traits::order != observable::Order::indexed)
+          expect(proxy->index(row, 0).data(kKeyRole).template value<Key>() == sorted[static_cast<std::size_t>(row)].key);
+      }
+    }
+
     // The container holds what the reference holds.
     expect(source.size() == static_cast<qsizetype>(shadow.rows().size()));
     // The model lists what the reference lists, in the same order.
@@ -387,7 +422,10 @@ Report run_random(unsigned seed, int steps, MakeModel&& make_model, bool stop_at
     for (int row = 0; row < model->rowCount() && row < static_cast<int>(shadow.rows().size()); ++row) {
       const auto& expected = shadow.rows()[row];
       const QModelIndex index = model->index(row, 0);
-      expect(model->data(index, kKeyRole).template value<Key>() == expected.key);
+      if constexpr (Traits::order == observable::Order::indexed)
+        expect(!model->data(index, kKeyRole).isValid());  // a list offers no key role
+      else
+        expect(model->data(index, kKeyRole).template value<Key>() == expected.key);
       expect(model->data(index, Qt::DisplayRole).toInt() == expected.value);
     }
     // A list has no children: a valid parent has no rows.
@@ -409,6 +447,7 @@ Report run_random(unsigned seed, int steps, MakeModel&& make_model, bool stop_at
     }
   }
   report.violations = watcher.violations();
+  if (proxyWatcher) report.violations += proxyWatcher->violations();
   return report;
 }
 

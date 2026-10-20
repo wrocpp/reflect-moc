@@ -32,6 +32,7 @@ set(RQT_QT_CAPABILITY_TESTS
   capability_data_member_signals
   capability_class_template_signals
   capability_class_name_override
+  capability_class_name_normalized
   capability_compat_header_moc_syntax
   capability_interface_bases
   capability_signal_to_signal_connect
@@ -70,7 +71,10 @@ set(limit_static_signal_const_owner_MESSAGE
   "a signal is a non-const member: it cannot be emitted from a const member function")
 set(limit_static_signal_static_member_function_MESSAGE
   "is unavailable for static member functions")
+set(limit_observable_container_throwing_move_MESSAGE
+  "the value type must be nothrow move constructible and assignable")
 set(RQT_QT_COMPILE_FAIL_TESTS
+  limit_observable_container_throwing_move
   limit_property_index_gap
   limit_rqt_connect_argument_mismatch
   limit_qobject_cast_needs_tier_b
@@ -116,6 +120,31 @@ if(TARGET Qt6::Test)
   endforeach()
 endif()
 
+# One specialization of the observable container and its model in two translation units, under -flto -Wodr.
+if(TARGET Qt6::Core)
+  add_executable(capability_class_template_two_tus
+    capability_class_template_two_tus_a.cpp capability_class_template_two_tus_b.cpp)
+  target_link_libraries(capability_class_template_two_tus PRIVATE ${RQT_QT_LIBS})
+  target_compile_options(capability_class_template_two_tus PRIVATE -flto -Wodr -Wlto-type-mismatch)
+  target_link_options(capability_class_template_two_tus PRIVATE -flto -Wodr -Wlto-type-mismatch -Werror)
+  set_target_properties(capability_class_template_two_tus PROPERTIES AUTOMOC OFF AUTOUIC OFF AUTORCC OFF)
+  target_include_directories(capability_class_template_two_tus PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../examples/qt/observable_models)
+  add_test(NAME capability_class_template_two_tus COMMAND capability_class_template_two_tus)
+  set_tests_properties(capability_class_template_two_tus PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen" LABELS qt)
+endif()
+
+# A specialization with typed signals, registered as a QML element.
+if(TARGET Qt6::Qml)
+  add_executable(capability_class_template_qml capability_class_template_qml.cpp)
+  target_link_libraries(capability_class_template_qml PRIVATE ${RQT_QT_LIBS})
+  set_target_properties(capability_class_template_qml PROPERTIES AUTOMOC OFF AUTOUIC OFF AUTORCC OFF)
+  target_include_directories(capability_class_template_qml PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../examples/qt/observable_models)
+  add_test(NAME capability_class_template_qml COMMAND capability_class_template_qml)
+  set_tests_properties(capability_class_template_qml PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen" LABELS qt)
+endif()
+
 # One class in a header, two translation units, one executable.
 add_executable(capability_static_metaobject_two_tus
   capability_static_metaobject_two_tus_a.cpp capability_static_metaobject_two_tus_b.cpp)
@@ -158,6 +187,7 @@ foreach(name IN LISTS RQT_QT_COMPILE_FAIL_TESTS)
   add_library(${name} OBJECT EXCLUDE_FROM_ALL ${name}.cpp)
   target_link_libraries(${name} PRIVATE ${RQT_QT_LIBS})
   set_target_properties(${name} PROPERTIES AUTOMOC OFF AUTOUIC OFF AUTORCC OFF)
+  target_include_directories(${name} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../examples/qt/observable_models)
   add_test(NAME ${name} COMMAND ${CMAKE_COMMAND} --build ${CMAKE_BINARY_DIR} --target ${name})
   # These tests run `cmake --build` on this build tree; two at once corrupt ninja's dyndep files.
   set_tests_properties(${name} PROPERTIES PASS_REGULAR_EXPRESSION "${${name}_MESSAGE}" LABELS qt-limit
