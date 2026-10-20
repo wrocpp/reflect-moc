@@ -121,9 +121,37 @@ allocates. A `quint32` or a `QString` does not, and the gap is already there for
 | `QMap` | replace | 1857.9 (1750.4-2446.3) | 1875.6 (1716.5-1946.0) | 1.01 |
 | `QMap` | drain | 1192.8 (1089.9-1591.9) | 1152.3 (1076.8-1219.1) | 0.97 |
 
-The typed version is faster or equal in all ten rows, by about 15 to 25 percent for a list and a hash, and by
-nothing measurable for a map, where the row count (a walk of the tree) dominates both. The model's begin/end calls
+On this machine the typed version is faster or equal in all ten rows, by about 15 to 25 percent for a list and a hash, and by
+nothing measurable for a map (the x86_64 run below has one exception), where the row count (a walk of the tree) dominates both. The model's begin/end calls
 and `QMetaObject::activate` are most of every figure, so the key transport is a small part of a change.
+
+### The same on x86_64
+
+The `bench` workflow ([run 39480417966](https://github.com/wrocpp/reflect-moc/actions/runs/39480417966)), GitHub
+ubuntu-24.04 runner, 4 cores, GCC 16.2.0, Qt 6.10.3, 7 runs, load 1 to 2.5. The spread is far smaller than on the Mac
+(most cells within 2 percent), so the ratios are readable. ns per change at 1,000 entries, median:
+
+| container | change | QVariant | typed | typed / QVariant |
+|---|---|---|---|---|
+| `QList` | fill | 146.3 | 120.1 | 0.82 |
+| `QList` | replace | 78.8 | 52.5 | 0.67 |
+| `QList` | move | 746.9 | 676.9 | 0.91 |
+| `QList` | drain | 152.2 | 128.1 | 0.84 |
+| `QHash` | fill | 154.9 | 126.9 | 0.82 |
+| `QHash` | replace | 258.4 | 236.6 | 0.92 |
+| `QHash` | drain | 267.5 | 297.8 | **1.11** |
+| `QMap` | fill / replace / drain | 1279 / 2055 / 1262 | 1299 / 2046 / 1246 | 1.02 / 1.00 / 0.99 |
+
+Signal only: 51.2 against 38.1 ns for a `quint32` key, 64.2 against 37.8 for a `QString` and for the 32-byte
+struct. Sizes are the same as above. Compile, one translation unit: typed 7.29 s, QVariant 5.16 s plus 2.51 s for moc
+and its output (7.67 s). Binary 147,984 against 130,520 bytes.
+
+**One result goes against the typed version.** Draining a hash model (removing entries in random order) is slower
+with typed signals: 1.11 at 1,000 entries, 1.62 at 10,000 and 1.73 at 100,000 (16.1 against 9.3 microseconds per
+removal), with a spread under 1 percent. The Mac shows the same direction at 100,000 entries (1.22, three noisy runs).
+Replace and fill in the same model do not show it, and the `QMap` and `QList` rows are equal or better. I have not
+found the cause, and do not claim one: the two builds run the same model code for this path, and only the signal
+transport differs.
 
 ### How the cost grows
 
