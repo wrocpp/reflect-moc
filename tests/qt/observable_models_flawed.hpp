@@ -81,7 +81,6 @@ class FlawedListModel : public QAbstractListModel {
   }
   QVariant data(const QModelIndex& index, int role = Qt::DisplayRole) const override {
     if (!index.isValid() || index.row() >= rowCount()) return {};
-    if (role == kKeyRole) return QVariant::fromValue(static_cast<qsizetype>(index.row()));
     if (role == Qt::DisplayRole) return m_source->value(index.row()).value;
     return {};
   }

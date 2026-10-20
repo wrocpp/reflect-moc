@@ -30,6 +30,9 @@ class ContainerModel : public QAbstractListModel {
   using Formatter = std::function<QVariant(const Key&, const Value&)>;
 
   static constexpr int KeyRole = Qt::UserRole;
+  // A list entry has no identity but its row, which shifts under every insert and remove without a signal,
+  // so a role that answered with it would go stale in a sorting proxy. Lists do not offer the role.
+  static constexpr bool hasKeyRole = Traits::order != observable::Order::indexed;
 
   ContainerModel(Source* source, Formatter formatter, QObject* parent = nullptr)
       : QAbstractListModel(parent), m_source(source), m_formatter(std::move(formatter)) {
@@ -44,14 +47,14 @@ class ContainerModel : public QAbstractListModel {
   QVariant data(const QModelIndex& index, int role = Qt::DisplayRole) const override {
     if (!index.isValid() || index.row() >= rowCount()) return {};
     const Key key = keyAt(index.row());
-    if (role == KeyRole) return QVariant::fromValue(key);
+    if (role == KeyRole && hasKeyRole) return QVariant::fromValue(key);
     if (role == Qt::DisplayRole) return m_formatter(key, m_source->value(key));
     return {};
   }
 
   QHash<int, QByteArray> roleNames() const override {
     auto names = QAbstractListModel::roleNames();
-    names.insert(KeyRole, "key");
+    if (hasKeyRole) names.insert(KeyRole, "key");
     return names;
   }
 

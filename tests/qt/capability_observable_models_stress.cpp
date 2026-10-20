@@ -31,7 +31,7 @@ bool stress(const char* name) {
           source, [](const Key& key, const Value& value) { return QVariant(observable_test::Make<C>::shown(key, value)); });
       tester = std::make_unique<QAbstractItemModelTester>(model.get(), QAbstractItemModelTester::FailureReportingMode::Fatal);
       return model;
-    });
+    }, /*stop_at_first_violation=*/false, /*with_proxy=*/true);
     applied += report.applied;
     refused += report.refused;
     if (!report.clean()) {
