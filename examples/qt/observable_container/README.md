@@ -8,7 +8,11 @@ An observable container whose signals are typed by its template argument, built 
 | `ported/` | one class template, `ObservableContainer<C>`, with `rqt::signal<void(const Key&)>` | reflect-moc, no moc |
 
 `ported/` is written by hand. moc cannot read a class template, so `tools/rqt-migrate`, which takes its input from
-`moc --output-json`, has nothing to port here.
+`moc --output-json`, never sees `ObservableContainer`. Its fold step reads the signals-only base through moc and moves
+the signals into the template (see `tools/README.md`); on a tree where the model unboxes in every lambda it ports the
+shape end to end (`examples/qt/observable_models_qvariant`, `tools/tests/fold_e2e.sh`). On `original/` it folds the
+base and lists eight sites it will not guess: the template boxes the key in a local before it emits, and the model is
+not a template, so `&ContainerSignals::entryAdded` does not say which instantiation it connects to.
 
 ```sh
 docker run --rm -v "$PWD":/src -w /src reflect-moc/gcc16-qt610 examples/qt/observable_container/check.sh original
