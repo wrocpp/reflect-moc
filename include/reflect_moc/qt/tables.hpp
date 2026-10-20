@@ -37,9 +37,38 @@ consteval std::string cat(std::initializer_list<std::string_view> parts) {
   return s;
 }
 
+// The spelling QMetaObject::normalizedType gives a type name, for the spellings a compiler writes for a
+// specialization: no space between closing angle brackets or after a comma, and Qt's short names for the
+// integer types.
+// Qt registers a pointer to a class under className() + "*" and refuses a name it would normalize differently,
+// so a specialization's class name has to be in this form before QVariant, QML or a signal can carry a pointer to it.
+constexpr std::string normalize_type_name(std::string name) {
+  struct Spelling {
+    std::string_view written, short_name;
+  };
+  // Longest first: "unsigned long long" must be read before "long long" and "unsigned long".
+  constexpr Spelling spellings[] = {{"unsigned long long", "qulonglong"}, {"unsigned long", "ulong"},
+                                    {"unsigned short", "ushort"},         {"unsigned char", "uchar"},
+                                    {"unsigned int", "uint"},             {"long long", "qlonglong"},
+                                    {"unsigned", "uint"}};
+  const auto word_char = [](char c) { return c == '_' || (c >= '0' && c <= '9') || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z'); };
+  for (const Spelling& s : spellings) {
+    for (std::size_t at = name.find(s.written); at != std::string::npos; at = name.find(s.written, at + s.short_name.size())) {
+      const std::size_t after = at + s.written.size();
+      const bool starts_word = at == 0 || !word_char(name[at - 1]);
+      const bool ends_word = after >= name.size() || !word_char(name[after]);
+      if (!starts_word || !ends_word) continue;
+      name.replace(at, s.written.size(), s.short_name);
+    }
+  }
+  for (std::size_t at = name.find("> >"); at != std::string::npos; at = name.find("> >", at)) name.erase(at + 1, 1);
+  for (std::size_t at = name.find(", "); at != std::string::npos; at = name.find(", ", at + 1)) name.erase(at + 1, 1);
+  return name;
+}
+
 consteval std::string qualified_name(info t) {
-  // A specialization of a class template has no identifier; the compiler's own spelling names it.
-  if (!meta::has_identifier(t)) return std::string{meta::display_string_of(t)};
+  // A specialization of a class template has no identifier; the compiler's own spelling names it, normalized.
+  if (!meta::has_identifier(t)) return normalize_type_name(std::string{meta::display_string_of(t)});
   std::string s{meta::identifier_of(t)};
   // The global namespace, and an anonymous one, have no identifier and end the walk.
   for (info p = meta::parent_of(t);

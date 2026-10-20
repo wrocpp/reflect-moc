@@ -132,9 +132,10 @@ int main() {
   using Listed = ObservableContainer<QList<Sample>>;
   Hashed hashed;
   Listed listed;
-  // The class name is the compiler's spelling of the specialization (GCC writes the space in "> >").
-  CHECK(QByteArray{hashed.metaObject()->className()} == "ObservableContainer<QHash<unsigned int, Sample> >");
-  CHECK(QByteArray{listed.metaObject()->className()} == "ObservableContainer<QList<Sample> >");
+  // The class name is the compiler's spelling of the specialization in Qt's normalized form: GCC writes
+  // "unsigned int", a space in "> >" and one after the comma, Qt wants "uint", ">>" and none.
+  CHECK(QByteArray{hashed.metaObject()->className()} == "ObservableContainer<QHash<uint,Sample>>");
+  CHECK(QByteArray{listed.metaObject()->className()} == "ObservableContainer<QList<Sample>>");
   CHECK(hashed.metaObject() != listed.metaObject());
   CHECK(hashed.metaObject()->indexOfSignal("entryAdded(unsigned int)") >= 0);
   CHECK(listed.metaObject()->indexOfSignal("entryAdded(qlonglong)") >= 0);

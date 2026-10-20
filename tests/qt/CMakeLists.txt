@@ -32,6 +32,7 @@ set(RQT_QT_CAPABILITY_TESTS
   capability_data_member_signals
   capability_class_template_signals
   capability_class_name_override
+  capability_class_name_normalized
   capability_compat_header_moc_syntax
   capability_interface_bases
   capability_signal_to_signal_connect
@@ -128,6 +129,17 @@ if(TARGET Qt6::Core)
     ${CMAKE_CURRENT_SOURCE_DIR}/../../examples/qt/observable_models)
   add_test(NAME capability_class_template_two_tus COMMAND capability_class_template_two_tus)
   set_tests_properties(capability_class_template_two_tus PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen" LABELS qt)
+endif()
+
+# A specialization with typed signals, registered as a QML element.
+if(TARGET Qt6::Qml)
+  add_executable(capability_class_template_qml capability_class_template_qml.cpp)
+  target_link_libraries(capability_class_template_qml PRIVATE ${RQT_QT_LIBS})
+  set_target_properties(capability_class_template_qml PROPERTIES AUTOMOC OFF AUTOUIC OFF AUTORCC OFF)
+  target_include_directories(capability_class_template_qml PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../examples/qt/observable_models)
+  add_test(NAME capability_class_template_qml COMMAND capability_class_template_qml)
+  set_tests_properties(capability_class_template_qml PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen" LABELS qt)
 endif()
 
 # One class in a header, two translation units, one executable.
