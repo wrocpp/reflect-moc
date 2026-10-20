@@ -1,0 +1,33 @@
+{
+ "classes": [
+  {
+   "className": "DataSignals",
+   "lineNumber": 6,
+   "object": true,
+   "qualifiedClassName": "DataSignals",
+   "signals": [
+    {
+     "access": "public",
+     "arguments": [
+      {
+       "name": "key",
+       "type": "QVariant"
+      }
+     ],
+     "index": 0,
+     "lineNumber": 11,
+     "name": "changed",
+     "returnType": "void"
+    }
+   ],
+   "superClasses": [
+    {
+     "access": "public",
+     "name": "QObject"
+    }
+   ]
+  }
+ ],
+ "inputFile": "extra_member.h",
+ "outputRevision": 69
+}

@@ -1,0 +1,146 @@
+{
+ "classes": [
+  {
+   "className": "ContainerSignals",
+   "lineNumber": 12,
+   "object": true,
+   "qualifiedClassName": "ContainerSignals",
+   "signals": [
+    {
+     "access": "public",
+     "arguments": [
+      {
+       "name": "key",
+       "type": "QVariant"
+      }
+     ],
+     "index": 0,
+     "lineNumber": 19,
+     "name": "entryAboutToBeAdded",
+     "returnType": "void"
+    },
+    {
+     "access": "public",
+     "arguments": [
+      {
+       "name": "key",
+       "type": "QVariant"
+      }
+     ],
+     "index": 1,
+     "lineNumber": 20,
+     "name": "entryAdded",
+     "returnType": "void"
+    },
+    {
+     "access": "public",
+     "arguments": [
+      {
+       "name": "key",
+       "type": "QVariant"
+      }
+     ],
+     "index": 2,
+     "lineNumber": 21,
+     "name": "entryAboutToBeRemoved",
+     "returnType": "void"
+    },
+    {
+     "access": "public",
+     "arguments": [
+      {
+       "name": "key",
+       "type": "QVariant"
+      }
+     ],
+     "index": 3,
+     "lineNumber": 22,
+     "name": "entryRemoved",
+     "returnType": "void"
+    },
+    {
+     "access": "public",
+     "arguments": [
+      {
+       "name": "key",
+       "type": "QVariant"
+      }
+     ],
+     "index": 4,
+     "lineNumber": 23,
+     "name": "entryAboutToBeChanged",
+     "returnType": "void"
+    },
+    {
+     "access": "public",
+     "arguments": [
+      {
+       "name": "key",
+       "type": "QVariant"
+      }
+     ],
+     "index": 5,
+     "lineNumber": 24,
+     "name": "entryChanged",
+     "returnType": "void"
+    },
+    {
+     "access": "public",
+     "arguments": [
+      {
+       "name": "from",
+       "type": "QVariant"
+      },
+      {
+       "name": "to",
+       "type": "QVariant"
+      }
+     ],
+     "index": 6,
+     "lineNumber": 25,
+     "name": "entryAboutToBeMoved",
+     "returnType": "void"
+    },
+    {
+     "access": "public",
+     "arguments": [
+      {
+       "name": "from",
+       "type": "QVariant"
+      },
+      {
+       "name": "to",
+       "type": "QVariant"
+      }
+     ],
+     "index": 7,
+     "lineNumber": 26,
+     "name": "entryMoved",
+     "returnType": "void"
+    },
+    {
+     "access": "public",
+     "index": 8,
+     "lineNumber": 27,
+     "name": "aboutToBeCleared",
+     "returnType": "void"
+    },
+    {
+     "access": "public",
+     "index": 9,
+     "lineNumber": 28,
+     "name": "cleared",
+     "returnType": "void"
+    }
+   ],
+   "superClasses": [
+    {
+     "access": "public",
+     "name": "QObject"
+    }
+   ]
+  }
+ ],
+ "inputFile": "container_signals.h",
+ "outputRevision": 69
+}

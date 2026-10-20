@@ -1,0 +1,33 @@
+{
+ "classes": [
+  {
+   "className": "LambdaSignals",
+   "lineNumber": 6,
+   "object": true,
+   "qualifiedClassName": "LambdaSignals",
+   "signals": [
+    {
+     "access": "public",
+     "arguments": [
+      {
+       "name": "key",
+       "type": "QVariant"
+      }
+     ],
+     "index": 0,
+     "lineNumber": 9,
+     "name": "keyed",
+     "returnType": "void"
+    }
+   ],
+   "superClasses": [
+    {
+     "access": "public",
+     "name": "QObject"
+    }
+   ]
+  }
+ ],
+ "inputFile": "lambdas.h",
+ "outputRevision": 69
+}
