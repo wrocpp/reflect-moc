@@ -79,6 +79,14 @@ struct classinfo {
   text<max_text_length> value;
 };
 
+// The name Qt reports for the class: `[[=rqt::class_name{"SampleContainer"}]]` on the class, or
+// RQT_CLASS_NAME("SampleContainer") in its body (which may depend on a template argument).
+// Without one, the class is named by its own identifier, or by the compiler's spelling of a
+// specialization of a class template.
+struct class_name {
+  text<max_text_length> name;
+};
+
 // RQT_ENUM(Mode) / RQT_FLAG(Opts): a static constexpr member that holds the type.
 // For a flag, Opts may be a QFlags<Enum> alias (Q_FLAG(Opts)) or an enum.
 struct enum_decl {

@@ -39,6 +39,12 @@ class Sensor : public QObject {
 - `RQT_OBJECT` comes first in the class, before any `rqt::signal` (it declares a hidden anchor member
   the signals depend on; see "Limits of the Qt-like syntax"). Data-member signals need `RQT_OBJECT`;
   a mixin class `rqt::Object<B>` uses the function form.
+- A class template takes `RQT_OBJECT` and data-member signals typed with its template arguments
+  (`rqt::signal<void(Key const&)>`), which moc cannot do. A class built on a specialization is not a template
+  and adds `RQT_OBJECT` and signals of its own. See "Class templates".
+- `RQT_CLASS_NAME("name")` or `[[=rqt::class_name{"name"}]]` sets the class name Qt reports. Without one a class
+  is named by its identifier, and a specialization by the compiler's spelling (`display_string_of`, which is
+  implementation-defined: GCC 16.2 writes `ObservableContainer<QHash<unsigned int, Sample> >`).
 - Besides `RQT_PROPERTY`: `RQT_ENUM(E)`, `RQT_FLAG(Flags)` and `RQT_CLASSINFO("key", "value")`. A base with
   a `Q_DECLARE_INTERFACE` id is answered by `qt_metacast` with no `Q_INTERFACES` line.
 - `#include <reflect_moc/compat.hpp>` after the Qt headers maps `Q_OBJECT`, `Q_PROPERTY`, `Q_INVOKABLE`,
@@ -113,7 +119,8 @@ that captures `this` implicitly with `[=]` is a `-Wdeprecated` error under `-Wer
 (`[&]` and `[this]` are tested). `rqt::connect(a, &A::s, b, &A::t)` does not accept a static signal
 (`no matching function for call to 'connect(A*&, rqt::static_signal<void(int)>*, ...)'`); use `QObject::connect`.
 A private static signal compiles and works through `emit` and a string `SIGNAL` connect (a pointer to it cannot
-be named outside the class). A class template fails to build, as it does with a non-static signal.
+be named outside the class). A class template with static signals builds like one with non-static signals
+(test `capability_class_template_signals`); see "Class templates".
 
 **Migration note.** The annotation `[[=rqt::signal]]` no longer exists: `rqt::signal` is now the class
 template of the data-member form. Write `[[=rqt::signal_function]]` for the body form, and
@@ -294,6 +301,39 @@ in the string table, the entry is `IsUnresolvedType | name index`, and the
 `metaTypes` array holds the `QMetaType`. Queued connections of such types work
 because the type is registered through `RegisterMethodArgumentMetaType`.
 The type must be declared with `Q_DECLARE_METATYPE` or be a Qt-known type.
+
+## Class templates
+
+moc rejects `Q_OBJECT` in a class template. With `RQT_OBJECT` a template declares its own signals, typed with
+its template arguments, and a class derived from a specialization is an ordinary class that adds `RQT_OBJECT` and
+signals of its own (test `capability_class_template_signals`):
+
+```cpp
+template <class C>
+class ObservableContainer : public QObject {
+  RQT_OBJECT
+ public:
+  using Key = KeyOf_t<C>;  // K for a QHash<K, V>, qsizetype for a QList<V>
+ signals:
+  rqt::signal<void(Key const&)> entryAdded;
+};
+
+class SampleStore : public ObservableContainer<QHash<unsigned, Sample>> {
+  RQT_OBJECT
+ signals:
+  rqt::signal<void()> unitChanged;
+};
+```
+
+- Every specialization has its own meta-object, and `qobject_cast<ObservableContainer<QList<Sample>>*>` of a
+  `SampleStore` is null.
+- The class name Qt reports for a specialization is the compiler's spelling of it. That text is implementation-defined,
+  so name it when it matters: `RQT_CLASS_NAME(NameOf<C>::value)` in the body picks it from the template argument
+  (test `capability_class_name_override`).
+- A signal argument is registered under Qt's name for the compiler's type, not the source spelling: `qsizetype` is
+  `qlonglong`, for a template and for a plain class.
+- `RQT_OBJECT_STATIC` with `static inline rqt::static_signal<...>` works in a template too, and the class is exactly
+  as large as `QObject`.
 
 ## Limits
 

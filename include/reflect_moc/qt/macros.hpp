@@ -59,6 +59,7 @@
 #define RQT_ENUM(Type) static constexpr ::rqt::enum_decl RQT_UNIQUE(rqt_enum_){^^Type, false};
 #define RQT_FLAG(Type) static constexpr ::rqt::enum_decl RQT_UNIQUE(rqt_flag_){^^Type, true};
 #define RQT_CLASSINFO(key, value) static constexpr ::rqt::classinfo RQT_UNIQUE(rqt_classinfo_){key, value};
+#define RQT_CLASS_NAME(name) static constexpr ::rqt::class_name rqt_class_name_{name};
 
 // Q_PROPERTY(type name READ r WRITE w NOTIFY n ...): the argument text is parsed at compile time.
 #define RQT_PROPERTY(...) \

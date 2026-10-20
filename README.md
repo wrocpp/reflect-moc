@@ -81,7 +81,7 @@ quoted here. Stripped executables were within 0.2 percent of the moc builds.
 - `Q_GADGET`, `Q_NAMESPACE`, `Q_PLUGIN_METADATA` and `QML_ELEMENT` are not supported, and `BINDABLE` properties stop the build.
 - A mixin class `rqt::Object<B>` needs `bind()` in its constructor and cannot have data-member signals.
 - `rqt::connect` does not accept a static signal; use `QObject::connect`.
-- A class template with signals fails to build.
+- A class template with signals builds, but Qt sees a specialization under the compiler's spelling of it (`ObservableContainer<QHash<unsigned int, Sample> >` on GCC 16.2); name it with `RQT_CLASS_NAME` or `[[=rqt::class_name{"..."}]]` for a stable name. A signal of type `qsizetype` is registered as `qlonglong`.
 - A lambda that captures `this` implicitly with `[=]` is an error under `-Werror` (C++20 deprecation); write `[this]`.
 - `QT_NO_KEYWORDS` is untested with the compat `emit`.
 - Private signals are not covered by the committed tests.

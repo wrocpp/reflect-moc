@@ -30,6 +30,8 @@ set(RQT_QT_CAPABILITY_TESTS
   capability_static_metaobject_one_line
   capability_qt_like_syntax
   capability_data_member_signals
+  capability_class_template_signals
+  capability_class_name_override
   capability_compat_header_moc_syntax
   capability_interface_bases
   capability_signal_to_signal_connect
