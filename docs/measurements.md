@@ -204,7 +204,8 @@ median), typed side, ns per change:
 | `QMap`, 10,000 | replace | 53,789 | 255 |
 | `QMap`, 10,000 | drain | 25,012 | 507 |
 
-A change in a hash model is about 200 times cheaper at 100,000 entries, and a map about 200 times at 10,000. The
+A change is 49 to 211 times cheaper (replace: hash 203 times, map 211; remove: hash 82 times, map 49), measured at 100,000
+entries for a hash and 10,000 for a map. The
 typed against QVariant ratios stay inside the noise of this machine (0.78 to 1.22), so the row index does not change
 the comparison above, only the size of the numbers it is made of. A list needed none. Costs that remain are a
 memmove for an insert or erase in the sorted copy of a map's keys (linear in bytes, not in tree nodes), and the
