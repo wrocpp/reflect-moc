@@ -44,6 +44,11 @@ jobs:
           docker run --rm -v "$PWD":/src -w /src "$IMAGE" \
             sh -c 'cd tools && python3 -m unittest discover -s tests -p "test_*.py"'
 
+      - name: The folded QVariant twin builds with no moc and passes the random driver
+        run: |
+          docker run --rm -v "$PWD":/src -w /src "$IMAGE" \
+            sh -c 'tools/tests/fold_e2e.sh qtlike && tools/tests/fold_e2e.sh annotations'
+
       - name: The four ported Qt examples build with no moc and print the moc output
         run: |
           docker run --rm -v "$PWD":/src -w /src "$IMAGE" examples/qt/check.sh ported
