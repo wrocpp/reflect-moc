@@ -19,7 +19,7 @@ $CXX -freflection -Iinclude $INC -I$QV -Iexamples/qt/observable_models $D/e2e.cp
 $CXX -DBENCH_QV $INC -I$QV -Iexamples/qt/observable_models $D/e2e.cpp "$O/moc_cs.cpp" $LIBS -o "$O/e2e_qv"
 
 echo "=== A. the two steps with no signals, 100000 keys, list allocated at a different offset (pad bytes first)"
-echo "probe,pad,scan_ns,remove_ns,both_ns"
+echo "probe,pad,scan_ns,remove_ns,both_ns,vector_scan_ns,vector_remove_ns,vector_both_ns"
 for pad in 0 4 8 12 16 24 32 48 64 96 128 4096; do "$O/probe" 100000 $pad; done
 echo "=== B. the same with 10000 keys"
 for pad in 0 4 8 16 32 64; do "$O/probe" 10000 $pad; done
@@ -46,3 +46,30 @@ if [ "$(uname -m)" = x86_64 ]; then
     for i in 1 2 3; do for b in qv rqt; do echo -n "$b "; "$O/e2e_${b}_f" --size 100000 --only QHash 2>/dev/null | grep -E "drain|replace" | cut -d, -f5,6 | tr '\n' ' '; echo; done; done
   done
 fi
+
+echo "=== G. is the QList the cause? the model's key list as std::vector with std::find (both builds), QHash 100000"
+for variant in rqt qv; do
+  rm -rf "$O/sv_$variant" && mkdir -p "$O/sv_$variant"
+done
+python3 - "$O" <<'PY'
+import sys, pathlib
+o = pathlib.Path(sys.argv[1])
+def patch(src, dst):
+    t = pathlib.Path(src).read_text()
+    t = t.replace("m_order = Traits::keys(source->items());", "{ auto k = Traits::keys(source->items()); m_order.assign(k.begin(), k.end()); }")
+    t = t.replace("m_order.at(row)", "m_order[row]")
+    t = t.replace("m_order.indexOf(key)", "(std::find(m_order.begin(), m_order.end(), key) - m_order.begin())")
+    t = t.replace("m_order.append(key)", "m_order.push_back(key)")
+    t = t.replace("m_order.removeAt(m_pendingRow)", "m_order.erase(m_order.begin() + m_pendingRow)")
+    t = t.replace("QList<Key> m_order;", "std::vector<Key> m_order;")
+    t = t.replace("#include <functional>", "#include <algorithm>\n#include <functional>\n#include <vector>")
+    assert "std::vector<Key> m_order" in t and "std::find" in t
+    pathlib.Path(dst).write_text(t)
+patch("examples/qt/observable_models/container_model.hpp", o / "sv_rqt" / "container_model.hpp")
+patch("examples/qt/observable_models_qvariant/container_model.h", o / "sv_qv" / "container_model.h")
+PY
+cp examples/qt/observable_models/observable_container.hpp "$O/sv_rqt/"
+cp examples/qt/observable_models_qvariant/observable_container.h examples/qt/observable_models_qvariant/container_signals.h "$O/sv_qv/"
+$CXX -freflection -Iinclude $INC -I"$O/sv_rqt" -Iexamples/qt/observable_models $D/e2e.cpp $LIBS -o "$O/e2e_rqt_vec"
+$CXX -DBENCH_QV $INC -I"$O/sv_qv" -Iexamples/qt/observable_models $D/e2e.cpp "$O/moc_cs.cpp" $LIBS -o "$O/e2e_qv_vec"
+for i in 1 2 3; do for b in qv rqt; do echo -n "$b+vector "; "$O/e2e_${b}_vec" --size 100000 --only QHash 2>/dev/null | grep -E "drain|replace" | cut -d, -f5,6 | tr '\n' ' '; echo; done; done

@@ -4,7 +4,10 @@
 // different offsets (pad bytes allocated first), to see whether the figure depends on the signal transport or on
 // where the list happens to sit in memory.
 //
-// Output: probe,<pad>,<scan ns>,<remove ns>,<both ns>   (ns per key, mean over the drain)
+// The same two steps are timed on a std::vector<quint32> (std::find and erase), to see whether the QList is the cause.
+//
+// Output: probe,<pad>,<scan ns>,<remove ns>,<both ns>,<vector scan ns>,<vector remove ns>,<vector both ns>
+//         (ns per key, mean over the drain)
 #include <QtCore/QList>
 
 #include <algorithm>
@@ -46,7 +49,7 @@ int main(int argc, char** argv) {
   }
 
   void* keep = pad ? std::malloc(static_cast<std::size_t>(pad)) : nullptr;
-  double scan = 0, remove = 0, both = 0;
+  double scan = 0, remove = 0, both = 0, vscan = 0, vremove = 0, vboth = 0;
   long sink = 0;
   for (int rep = 0; rep < reps; ++rep) {
     QList<quint32> order;
@@ -70,8 +73,27 @@ int main(int argc, char** argv) {
       order.removeAt(row);
     }
     both += ns_per(t, n) / reps;
+
+    std::vector<quint32> flat = added;
+    std::vector<quint32> flat_copy = added;
+    t = Clock::now();
+    for (int i = 0; i < n; ++i)
+      sink += std::find(flat_copy.begin(), flat_copy.end(), later[static_cast<std::size_t>(i)]) - flat_copy.begin();
+    vscan += ns_per(t, n) / reps;
+
+    t = Clock::now();
+    for (int i = 0; i < n; ++i) flat.erase(flat.begin() + rows[static_cast<std::size_t>(i)]);
+    vremove += ns_per(t, n) / reps;
+
+    flat = added;
+    t = Clock::now();
+    for (int i = 0; i < n; ++i) {
+      const auto at = std::find(flat.begin(), flat.end(), later[static_cast<std::size_t>(i)]);
+      flat.erase(at);
+    }
+    vboth += ns_per(t, n) / reps;
   }
-  std::printf("probe,%d,%.0f,%.0f,%.0f\n", pad, scan, remove, both);
+  std::printf("probe,%d,%.0f,%.0f,%.0f,%.0f,%.0f,%.0f\n", pad, scan, remove, both, vscan, vremove, vboth);
   std::free(keep);
   return sink == -1;
 }
