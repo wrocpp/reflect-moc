@@ -38,6 +38,8 @@ consteval std::string cat(std::initializer_list<std::string_view> parts) {
 }
 
 consteval std::string qualified_name(info t) {
+  // A specialization of a class template has no identifier; the compiler's own spelling names it.
+  if (!meta::has_identifier(t)) return std::string{meta::display_string_of(t)};
   std::string s{meta::identifier_of(t)};
   // The global namespace, and an anonymous one, have no identifier and end the walk.
   for (info p = meta::parent_of(t);
