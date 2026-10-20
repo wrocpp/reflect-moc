@@ -10,7 +10,7 @@ on:
         description: Repetitions of every timing
         default: '7'
       script:
-        description: Script in tests/qt/measure/observable_bench to run (run.sh or drain_probe.sh)
+        description: Script in tests/qt/measure/observable_bench to run (run.sh, drain_probe.sh or drain_profile.sh)
         default: run.sh
 
 permissions:
@@ -37,7 +37,8 @@ jobs:
       - name: QVariant split against typed signals
         run: |
           mkdir -p asm
-          docker run --rm -e RQT_RUNS=${{ inputs.runs }} -e RQT_ASM_OUT=/asm -v "$PWD/asm":/asm -v "$PWD":/src:ro -w /src "$IMAGE" \
+          sudo sysctl -w kernel.perf_event_paranoid=-1 || true
+          docker run --rm --privileged -e RQT_RUNS=${{ inputs.runs }} -e RQT_ASM_OUT=/asm -v "$PWD/asm":/asm -v "$PWD":/src:ro -w /src "$IMAGE" \
             bash tests/qt/measure/observable_bench/${{ inputs.script }} | tee bench.txt
       - uses: actions/upload-artifact@v4
         with:
