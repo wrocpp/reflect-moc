@@ -109,7 +109,7 @@ endif()
 # The observable container and its generic model (examples/qt/observable_models), driven by random changes.
 if(TARGET Qt6::Test)
   foreach(name capability_observable_models_stress capability_observable_models_flaws_detected
-               capability_observable_container_announcements)
+               capability_observable_container_announcements capability_row_index)
     add_executable(${name} ${name}.cpp)
     target_link_libraries(${name} PRIVATE ${RQT_QT_LIBS} Qt6::Test)
     set_target_properties(${name} PROPERTIES AUTOMOC OFF AUTOUIC OFF AUTORCC OFF)

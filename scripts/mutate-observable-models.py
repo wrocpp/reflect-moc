@@ -19,10 +19,11 @@ import sys
 SRC = os.environ.get("RQT_SRC", "/src")
 WORK = os.environ.get("RQT_MUTATE_WORK", "/tmp/rqt-mutate")
 TARGETS = ["capability_observable_models_stress", "capability_observable_models_flaws_detected",
-           "capability_observable_container_announcements"]
+           "capability_observable_container_announcements", "capability_row_index"]
 TEST_TIMEOUT_SECONDS = 180
 DIR = "examples/qt/observable_models/"
 CONTAINER, MODEL, TRAITS = DIR + "observable_container.hpp", DIR + "container_model.hpp", DIR + "container_traits.hpp"
+INDEX = DIR + "row_index.hpp"
 
 # (name, file, old text, new text, judged equivalent?)
 MUTANTS = [
@@ -54,10 +55,29 @@ MUTANTS = [
      "return contains(c, from) && contains(c, to) && from != to; }", "return contains(c, from) && contains(c, to); }", False),
     ("traits: a list cannot be moved", TRAITS,
      "  static constexpr bool movable = true;", "  static constexpr bool movable = false;", False),
-    ("traits: a map counts the insert row from upperBound", TRAITS,
-     "std::distance(c.cbegin(), c.lowerBound(k))", "std::distance(c.cbegin(), c.upperBound(k))", True),
-    ("traits: a map finds the wrong key for a row", TRAITS,
-     "std::next(c.cbegin(), row).key()", "std::next(c.cbegin(), row ? row - 1 : 0).key()", False),
+    ("index: a sorted index inserts after an equal key", INDEX,
+     "return std::lower_bound(m_keys.begin(), m_keys.end(), key) - m_keys.begin(); }",
+     "return std::upper_bound(m_keys.begin(), m_keys.end(), key) - m_keys.begin(); }", True),
+    ("index: a sorted index erases the row before", INDEX,
+     "void erase(const Key&, qsizetype row) { m_keys.erase(m_keys.begin() + row); }",
+     "void erase(const Key&, qsizetype row) { m_keys.erase(m_keys.begin() + (row ? row - 1 : 0)); }", False),
+    ("index: a sorted index inserts one row late", INDEX,
+     "m_keys.insert(m_keys.begin() + row, key); }", "m_keys.insert(m_keys.begin() + row + (row < static_cast<qsizetype>(m_keys.size()) ? 1 : 0), key); }", False),
+    ("index: a row is one too high", INDEX,
+     "return prefix(m_slot_of.value(key) + 1) - 1; }", "return prefix(m_slot_of.value(key) + 1); }", False),
+    ("index: selection of the k-th live slot stops early", INDEX,
+     "m_tree[static_cast<std::size_t>(next)] < k) {", "m_tree[static_cast<std::size_t>(next)] <= k) {", False),
+    ("index: an erase leaves the slot counted", INDEX, "    add(slot + 1, -1);\n", "", False),
+    ("index: an erase keeps the key", INDEX, "const qsizetype slot = m_slot_of.take(key);", "const qsizetype slot = m_slot_of.value(key);", True),  # a stale entry is overwritten by the next insert of that key and never read: costs memory only
+    ("index: a new slot is counted twice", INDEX,
+     "m_tree[static_cast<std::size_t>(position)] = 1 + prefix(position - 1) - prefix(position - lowbit(position));",
+     "m_tree[static_cast<std::size_t>(position)] = 2 + prefix(position - 1) - prefix(position - lowbit(position));", False),
+    ("index: dead slots are never compacted", INDEX,
+     "if (m_keys.size() > kCompactFloor && static_cast<std::size_t>(m_live) * 2 < m_keys.size()) compact();", "", True),
+    ("index: compaction keeps the dead slots", INDEX,
+     "if (m_alive[slot]) live.append(m_keys[slot]);", "live.append(m_keys[slot]);", False),
+    ("index: a hash row is announced before the end", INDEX,
+     "qsizetype rowToInsert(const Key&) const { return m_live; }", "qsizetype rowToInsert(const Key&) const { return 0; }", False),
     ("traits: a hash accepts a key it already holds", TRAITS,
      "static bool can_insert(const QHash<K, V>& c, const K& k) { return !c.contains(k); }",
      "static bool can_insert(const QHash<K, V>&, const K&) { return true; }", False),
