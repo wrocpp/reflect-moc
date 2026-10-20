@@ -20,7 +20,7 @@ SRC = os.environ.get("RQT_SRC", "/src")
 WORK = os.environ.get("RQT_MUTATE_WORK", "/tmp/rqt-mutate")
 TARGETS = ["capability_observable_models_stress", "capability_observable_models_flaws_detected",
            "capability_observable_container_announcements", "capability_row_index",
-           "capability_observable_ranges_edits"]
+           "capability_observable_ranges_edits", "capability_observable_multi"]
 TEST_TIMEOUT_SECONDS = 180
 DIR = "examples/qt/observable_models/"
 CONTAINER, MODEL, TRAITS = DIR + "observable_container.hpp", DIR + "container_model.hpp", DIR + "container_traits.hpp"
@@ -123,6 +123,27 @@ MUTANTS = [
      "static_cast<const QAbstractItemModel*>(this)->columnCount() - 1;", "0;", False),
     ("model: a range insert is never ended", MODEL,
      "this->endInsertRows(); });\n      QObject::connect(m_source, &Source::rangeAboutToBeRemoved", "});\n      QObject::connect(m_source, &Source::rangeAboutToBeRemoved", False),
+    ("multi: a map accepts the occurrence one past its count", TRAITS,
+     "static bool contains(const QMultiMap<K, V>& c, const Key& k) { return k.occurrence >= 0 && k.occurrence < c.count(k.key); }",
+     "static bool contains(const QMultiMap<K, V>& c, const Key& k) { return k.occurrence >= 0 && k.occurrence <= c.count(k.key); }", False),
+    ("multi: a map insert may name any occurrence", TRAITS,
+     "static bool can_insert(const QMultiMap<K, V>&, const Key& k) { return k.occurrence == 0; }",
+     "static bool can_insert(const QMultiMap<K, V>&, const Key&) { return true; }", False),
+    ("multi: a hash erases the oldest, not the n-th", TRAITS,
+     "static void erase(QMultiHash<K, V>& c, const Key& k) { c.erase(std::next(c.find(k.key), k.occurrence)); }",
+     "static void erase(QMultiHash<K, V>& c, const Key& k) { c.erase(c.find(k.key)); }", False),
+    ("multi: a sorted index puts the row at the key's start", INDEX,
+     "qsizetype rowOf(const Key& entry) const { return first_row_of(entry.key) + entry.occurrence; }",
+     "qsizetype rowOf(const Key& entry) const { return first_row_of(entry.key); }", False),
+    ("multi: a sorted index names the wrong occurrence", INDEX,
+     "return Key{key, row - first_row_of(key)};", "return Key{key, row - first_row_of(key) + 1};", False),
+    ("multi: an unordered index counts occurrence from the oldest", INDEX,
+     "return Key{key, static_cast<qsizetype>(list.end() - at) - 1};", "return Key{key, static_cast<qsizetype>(at - list.begin())};", False),
+    ("multi: an unordered erase takes the oldest slot", INDEX,
+     "const qsizetype slot = list[list.size() - 1 - static_cast<std::size_t>(entry.occurrence)];\n    list.erase(list.end() - 1 - entry.occurrence);",
+     "const qsizetype slot = list[static_cast<std::size_t>(entry.occurrence)];\n    list.erase(list.begin() + entry.occurrence);", False),
+    ("multi: an unordered index forgets an emptied key", INDEX,
+     "    if (list.empty()) m_slots_of.remove(entry.key);\n", "", True),
     ("model: the key role answers nothing", MODEL,
      "    if (role == KeyRole && hasKeyRole) return QVariant::fromValue(key);\n", "", False),
     ("model: a sorted insert is announced at the end", MODEL,

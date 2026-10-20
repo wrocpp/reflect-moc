@@ -1,13 +1,17 @@
 // What the observable container and its model need to know about each Qt container, in one place:
 // how an entry is identified (its key), how a new key finds its position, and which changes the
 // container supports. A QList entry is identified by its index, a QMap or QHash entry by its key and
-// a QSet entry by itself. QMultiMap and QMultiHash are not described: two entries can share a key,
-// so a key does not identify one.
+// a QSet entry by itself. In a QMultiMap or QMultiHash two entries can share a key, so an entry is identified by
+// a MultiKey: its key and its occurrence, counted from the most recently inserted (0) as values(key) lists them.
+// A new entry takes occurrence 0 and the older ones of its key move up, so, like a list index, the identity of an
+// entry changes without a signal, and a model offers no key role for them.
 #pragma once
 
 #include <QtCore/QHash>
 #include <QtCore/QList>
 #include <QtCore/QMap>
+#include <QtCore/QMultiHash>
+#include <QtCore/QMultiMap>
 #include <QtCore/QQueue>
 #include <QtCore/QSet>
 #include <QtCore/QStack>
@@ -20,9 +24,20 @@ namespace observable {
 
 // How the model orders the rows of a container.
 enum class Order {
-  indexed,    // the key is the row (QList and its subclasses)
-  sorted,     // the row follows the key order (QMap)
-  unordered,  // no order of its own: the model lists keys in the order they were added (QHash, QSet)
+  indexed,         // the key is the row (QList and its subclasses)
+  sorted,          // the row follows the key order (QMap)
+  unordered,       // no order of its own: the model lists keys in the order they were added (QHash, QSet)
+  sorted_multi,    // sorted, and several entries per key, the most recent first (QMultiMap)
+  unordered_multi  // in the order added, and several entries per key (QMultiHash)
+};
+
+// An entry of a multi container: its key, and which of the entries of that key it is, counted from the most
+// recently inserted.
+template <class K>
+struct MultiKey {
+  K key{};
+  qsizetype occurrence = 0;
+  bool operator==(const MultiKey&) const = default;
 };
 
 template <class C>
@@ -117,6 +132,60 @@ struct ContainerTraits<QSet<K>> {
   static void move(QSet<K>&, const K&, const K&) {}
   static const K& value(const QSet<K>&, const K& k) { return k; }
   static QList<K> keys(const QSet<K>& c) { return c.values(); }
+};
+
+// Both multi containers keep the entries of one key together, the most recently inserted first, so the entry
+// with occurrence n is the n-th from find(key).
+template <class K, class V>
+struct ContainerTraits<QMultiMap<K, V>> {
+  using Key = MultiKey<K>;
+  using Value = V;
+  static constexpr Order order = Order::sorted_multi;
+  static constexpr bool movable = false;
+  static constexpr bool assignable = true;
+
+  static qsizetype size(const QMultiMap<K, V>& c) { return c.size(); }
+  static bool contains(const QMultiMap<K, V>& c, const Key& k) { return k.occurrence >= 0 && k.occurrence < c.count(k.key); }
+  static bool can_insert(const QMultiMap<K, V>&, const Key& k) { return k.occurrence == 0; }  // a new entry is the newest
+  static bool can_move(const QMultiMap<K, V>&, const Key&, const Key&) { return false; }
+  static void insert(QMultiMap<K, V>& c, const Key& k, V v) { c.insert(k.key, std::move(v)); }
+  static void erase(QMultiMap<K, V>& c, const Key& k) { c.erase(std::next(c.find(k.key), k.occurrence)); }
+  static void assign(QMultiMap<K, V>& c, const Key& k, V v) { std::next(c.find(k.key), k.occurrence).value() = std::move(v); }
+  static void move(QMultiMap<K, V>&, const Key&, const Key&) {}
+  static const V& value(const QMultiMap<K, V>& c, const Key& k) { return *std::next(c.constFind(k.key), k.occurrence); }
+  // Every entry once, ordered by key, the most recent of a key first.
+  static QList<Key> keys(const QMultiMap<K, V>& c) {
+    QList<Key> out;
+    for (const K& key : c.uniqueKeys())
+      for (qsizetype n = 0; n < c.count(key); ++n) out.append(Key{key, n});
+    return out;
+  }
+};
+
+template <class K, class V>
+struct ContainerTraits<QMultiHash<K, V>> {
+  using Key = MultiKey<K>;
+  using Value = V;
+  static constexpr Order order = Order::unordered_multi;
+  static constexpr bool movable = false;
+  static constexpr bool assignable = true;
+
+  static qsizetype size(const QMultiHash<K, V>& c) { return c.size(); }
+  static bool contains(const QMultiHash<K, V>& c, const Key& k) { return k.occurrence >= 0 && k.occurrence < c.count(k.key); }
+  static bool can_insert(const QMultiHash<K, V>&, const Key& k) { return k.occurrence == 0; }
+  static bool can_move(const QMultiHash<K, V>&, const Key&, const Key&) { return false; }
+  static void insert(QMultiHash<K, V>& c, const Key& k, V v) { c.insert(k.key, std::move(v)); }
+  static void erase(QMultiHash<K, V>& c, const Key& k) { c.erase(std::next(c.find(k.key), k.occurrence)); }
+  static void assign(QMultiHash<K, V>& c, const Key& k, V v) { std::next(c.find(k.key), k.occurrence).value() = std::move(v); }
+  static void move(QMultiHash<K, V>&, const Key&, const Key&) {}
+  static const V& value(const QMultiHash<K, V>& c, const Key& k) { return *std::next(c.constFind(k.key), k.occurrence); }
+  // Every entry once, the oldest of a key first, so that the model numbers the slots in the order they were added.
+  static QList<Key> keys(const QMultiHash<K, V>& c) {
+    QList<Key> out;
+    for (const K& key : c.uniqueKeys())
+      for (qsizetype n = c.count(key); n-- > 0;) out.append(Key{key, n});
+    return out;
+  }
 };
 
 }  // namespace observable

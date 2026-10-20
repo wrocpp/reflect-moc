@@ -110,7 +110,7 @@ endif()
 if(TARGET Qt6::Test)
   foreach(name capability_observable_models_stress capability_observable_models_flaws_detected
                capability_observable_container_announcements capability_row_index
-               capability_observable_ranges_edits)
+               capability_observable_ranges_edits capability_observable_multi)
     add_executable(${name} ${name}.cpp)
     target_link_libraries(${name} PRIVATE ${RQT_QT_LIBS} Qt6::Test)
     set_target_properties(${name} PROPERTIES AUTOMOC OFF AUTOUIC OFF AUTORCC OFF)

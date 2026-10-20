@@ -53,9 +53,10 @@ class ContainerModelBase : public Model {
   using Value = typename Traits::Value;
 
   static constexpr int KeyRole = Qt::UserRole;
-  // A list entry has no identity but its row, which shifts under every insert and remove without a signal,
-  // so a role that answered with it would go stale in a sorting proxy. Lists do not offer the role.
-  static constexpr bool hasKeyRole = Traits::order != Order::indexed;
+  // A list entry has no identity but its row, and an entry of a multi container only its key and occurrence, both
+  // of which shift under an insert or remove without a signal, so a role that answered with them would go stale
+  // in a sorting proxy. Lists and multi containers do not offer the role.
+  static constexpr bool hasKeyRole = Traits::order == Order::sorted || Traits::order == Order::unordered;
 
   int rowCount(const QModelIndex& parent = QModelIndex()) const override {
     return parent.isValid() ? 0 : static_cast<int>(m_source->size());
