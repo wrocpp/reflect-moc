@@ -36,9 +36,12 @@ jobs:
           cache-to: type=gha,mode=max
       - name: QVariant split against typed signals
         run: |
-          docker run --rm -e RQT_RUNS=${{ inputs.runs }} -v "$PWD":/src:ro -w /src "$IMAGE" \
+          mkdir -p asm
+          docker run --rm -e RQT_RUNS=${{ inputs.runs }} -e RQT_ASM_OUT=/asm -v "$PWD/asm":/asm -v "$PWD":/src:ro -w /src "$IMAGE" \
             bash tests/qt/measure/observable_bench/${{ inputs.script }} | tee bench.txt
       - uses: actions/upload-artifact@v4
         with:
           name: observable-bench
-          path: bench.txt
+          path: |
+            bench.txt
+            asm

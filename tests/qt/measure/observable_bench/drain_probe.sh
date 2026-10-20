@@ -26,3 +26,12 @@ echo "=== C. end to end, QHash only, 100000 entries, five alternating runs (drai
 for i in 1 2 3 4 5; do for b in qv rqt; do echo -n "$b "; "$O/e2e_$b" --size 100000 --only QHash 2>/dev/null | grep -E "drain|replace" | cut -d, -f5,6 | tr '\n' ' '; echo; done; done
 echo "=== D. the full run order (QList then QHash then QMap), QHash 100000, three runs"
 for i in 1 2 3; do for b in qv rqt; do echo -n "$b "; "$O/e2e_$b" --scale 2>/dev/null | grep -E "QHash,100000,drain" | cut -d, -f2,6 | tr '\n' ' '; echo; done; done
+
+echo "=== E. assembly of the model's removal and replace slots, both builds (saved as .s files)"
+mkdir -p "$O/asm"
+g++ -std=c++26 -fPIC -O2 -S -freflection -Iinclude $INC -I$QV -Iexamples/qt/observable_models $D/e2e.cpp -o "$O/asm/rqt.s"
+g++ -std=c++26 -fPIC -O2 -S -DBENCH_QV $INC -I$QV -Iexamples/qt/observable_models $D/e2e.cpp -o "$O/asm/qv.s"
+g++ -std=c++26 -fPIC -O2 -S $INC $D/drain_probe.cpp -o "$O/asm/probe.s"
+objdump -d --no-show-raw-insn -C "$O/e2e_rqt" > "$O/asm/rqt.dump"
+objdump -d --no-show-raw-insn -C "$O/e2e_qv" > "$O/asm/qv.dump"
+if [ -n "${RQT_ASM_OUT:-}" ]; then cp -r "$O/asm/." "$RQT_ASM_OUT/"; fi
