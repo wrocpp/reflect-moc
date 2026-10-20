@@ -14,7 +14,9 @@
 
 #include <QtCore/QAbstractListModel>
 
+#include <algorithm>
 #include <functional>
+#include <vector>
 
 namespace observable {
 
@@ -36,7 +38,10 @@ class ContainerModel : public QAbstractListModel {
 
   ContainerModel(Source* source, Formatter formatter, QObject* parent = nullptr)
       : QAbstractListModel(parent), m_source(source), m_formatter(std::move(formatter)) {
-    if constexpr (Traits::order == Order::unordered) m_order = Traits::keys(source->items());
+    if constexpr (Traits::order == Order::unordered) {
+      const auto keys = Traits::keys(source->items());
+      m_order.assign(keys.begin(), keys.end());
+    }
     connectSource();
   }
 
@@ -61,7 +66,7 @@ class ContainerModel : public QAbstractListModel {
  private:
   Key keyAt(qsizetype row) const {
     if constexpr (Traits::order == Order::unordered)
-      return m_order.at(row);
+      return m_order[static_cast<std::size_t>(row)];
     else
       return Traits::key_at(m_source->items(), row);
   }
@@ -69,7 +74,7 @@ class ContainerModel : public QAbstractListModel {
   // The row of a key that is in the container now.
   qsizetype rowOf(const Key& key) const {
     if constexpr (Traits::order == Order::unordered)
-      return m_order.indexOf(key);
+      return std::find(m_order.begin(), m_order.end(), key) - m_order.begin();
     else
       return Traits::row_of(m_source->items(), key);
   }
@@ -77,7 +82,7 @@ class ContainerModel : public QAbstractListModel {
   // The row a key that is not in the container yet will occupy.
   qsizetype rowToInsert(const Key& key) const {
     if constexpr (Traits::order == Order::unordered)
-      return m_order.size();
+      return static_cast<qsizetype>(m_order.size());
     else
       return Traits::insert_row(m_source->items(), key);
   }
@@ -88,7 +93,7 @@ class ContainerModel : public QAbstractListModel {
       beginInsertRows(QModelIndex(), row, row);
     });
     connect(m_source, &Source::entryAdded, this, [this](const Key& key) {
-      if constexpr (Traits::order == Order::unordered) m_order.append(key);
+      if constexpr (Traits::order == Order::unordered) m_order.push_back(key);
       endInsertRows();
     });
 
@@ -97,7 +102,7 @@ class ContainerModel : public QAbstractListModel {
       beginRemoveRows(QModelIndex(), m_pendingRow, m_pendingRow);
     });
     connect(m_source, &Source::entryRemoved, this, [this](const Key&) {
-      if constexpr (Traits::order == Order::unordered) m_order.removeAt(m_pendingRow);
+      if constexpr (Traits::order == Order::unordered) m_order.erase(m_order.begin() + m_pendingRow);
       endRemoveRows();
     });
 
@@ -125,7 +130,7 @@ class ContainerModel : public QAbstractListModel {
 
   Source* m_source;
   Formatter m_formatter;
-  QList<Key> m_order;  // unordered containers only
+  std::vector<Key> m_order;  // unordered containers only; a vector, because std::find scans it the same way wherever the code lands
   int m_pendingRow = -1;
 };
 
