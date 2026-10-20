@@ -71,7 +71,10 @@ set(limit_static_signal_const_owner_MESSAGE
   "a signal is a non-const member: it cannot be emitted from a const member function")
 set(limit_static_signal_static_member_function_MESSAGE
   "is unavailable for static member functions")
+set(limit_observable_container_throwing_move_MESSAGE
+  "the value type must be nothrow move constructible and assignable")
 set(RQT_QT_COMPILE_FAIL_TESTS
+  limit_observable_container_throwing_move
   limit_property_index_gap
   limit_rqt_connect_argument_mismatch
   limit_qobject_cast_needs_tier_b
@@ -184,6 +187,7 @@ foreach(name IN LISTS RQT_QT_COMPILE_FAIL_TESTS)
   add_library(${name} OBJECT EXCLUDE_FROM_ALL ${name}.cpp)
   target_link_libraries(${name} PRIVATE ${RQT_QT_LIBS})
   set_target_properties(${name} PROPERTIES AUTOMOC OFF AUTOUIC OFF AUTORCC OFF)
+  target_include_directories(${name} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../examples/qt/observable_models)
   add_test(NAME ${name} COMMAND ${CMAKE_COMMAND} --build ${CMAKE_BINARY_DIR} --target ${name})
   # These tests run `cmake --build` on this build tree; two at once corrupt ninja's dyndep files.
   set_tests_properties(${name} PROPERTIES PASS_REGULAR_EXPRESSION "${${name}_MESSAGE}" LABELS qt-limit
