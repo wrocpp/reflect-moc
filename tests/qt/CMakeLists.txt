@@ -116,6 +116,20 @@ if(TARGET Qt6::Test)
   endforeach()
 endif()
 
+# One specialization of the observable container and its model in two translation units, under -flto -Wodr.
+if(TARGET Qt6::Core)
+  add_executable(capability_class_template_two_tus
+    capability_class_template_two_tus_a.cpp capability_class_template_two_tus_b.cpp)
+  target_link_libraries(capability_class_template_two_tus PRIVATE ${RQT_QT_LIBS})
+  target_compile_options(capability_class_template_two_tus PRIVATE -flto -Wodr -Wlto-type-mismatch)
+  target_link_options(capability_class_template_two_tus PRIVATE -flto -Wodr -Wlto-type-mismatch -Werror)
+  set_target_properties(capability_class_template_two_tus PROPERTIES AUTOMOC OFF AUTOUIC OFF AUTORCC OFF)
+  target_include_directories(capability_class_template_two_tus PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../examples/qt/observable_models)
+  add_test(NAME capability_class_template_two_tus COMMAND capability_class_template_two_tus)
+  set_tests_properties(capability_class_template_two_tus PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen" LABELS qt)
+endif()
+
 # One class in a header, two translation units, one executable.
 add_executable(capability_static_metaobject_two_tus
   capability_static_metaobject_two_tus_a.cpp capability_static_metaobject_two_tus_b.cpp)
