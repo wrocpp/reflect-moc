@@ -102,6 +102,19 @@ if(TARGET Qt6::Test)
   target_compile_definitions(capability_data_member_signals PRIVATE RQT_HAVE_QTTEST)
 endif()
 
+# The observable container and its generic model (examples/qt/observable_models), driven by random changes.
+if(TARGET Qt6::Test)
+  foreach(name capability_observable_models_stress capability_observable_models_flaws_detected)
+    add_executable(${name} ${name}.cpp)
+    target_link_libraries(${name} PRIVATE ${RQT_QT_LIBS} Qt6::Test)
+    set_target_properties(${name} PROPERTIES AUTOMOC OFF AUTOUIC OFF AUTORCC OFF)
+    target_include_directories(${name} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}
+      ${CMAKE_CURRENT_SOURCE_DIR}/../../examples/qt/observable_models)
+    add_test(NAME ${name} COMMAND ${name})
+    set_tests_properties(${name} PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen" LABELS qt)
+  endforeach()
+endif()
+
 # One class in a header, two translation units, one executable.
 add_executable(capability_static_metaobject_two_tus
   capability_static_metaobject_two_tus_a.cpp capability_static_metaobject_two_tus_b.cpp)
