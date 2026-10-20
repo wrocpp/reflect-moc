@@ -89,6 +89,10 @@ done
 RQT_EXAMPLES_BUILD="$work/check" sh "$here/check.sh" ported > "$work/check.log" 2>&1 || { fail "check.sh ported failed"; grep -E "FAIL|BUILD FAILED" "$work/check.log" | head; }
 grep -q "output: identical to the baseline" "$work/check.log" && echo "ok: ported harness output identical to the original's baseline ($(grep -c 'output: identical' "$work/check.log") examples)"
 expect_no_moc "check.sh ported"
+# observable_container: a class template with signals, hand-written because moc cannot read it.
+RQT_EXAMPLES_BUILD="$work/check-oc" sh "$here/observable_container/check.sh" ported > "$work/check-oc.log" 2>&1 || { fail "observable_container check.sh ported failed"; grep -E "FAIL|BUILD FAILED" "$work/check-oc.log" | head; }
+grep -q "output: identical to the baseline" "$work/check-oc.log" && echo "ok: observable_container ported output identical to the moc baseline"
+expect_no_moc "observable_container check.sh ported"
 
 echo "=== 3. the demos compile with plain g++, no CMake"
 flags="-std=c++26 -freflection -fPIC -I$repo/include -I$QT/include -I$QT/include/QtCore -I$QT/include/QtGui -I$QT/include/QtQml -I$QT/include/QtQuick -I$QT/include/QtQmlIntegration"
