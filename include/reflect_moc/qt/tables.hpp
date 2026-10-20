@@ -559,10 +559,19 @@ consteval void pool_enums(string_pool& pool, info cls) {
   }
 }
 
+// The name Qt reports: an rqt::class_name (annotation, or RQT_CLASS_NAME in the body), else the type's own.
+consteval std::string class_display_name(info cls) {
+  for (auto m : meta::members_of(cls, unchecked))
+    if (meta::is_variable(m) && meta::is_static_member(m) && meta::remove_cvref(meta::type_of(m)) == ^^class_name)
+      return std::string{meta::extract<class_name>(m).name.view()};
+  auto const annotated = all<class_name>(cls);
+  return annotated.empty() ? qualified_name(cls) : std::string{annotated.front().name.view()};
+}
+
 // Class name first (Qt requires index 0), then "" (the empty tag).
 consteval std::vector<std::string> make_strings(info cls) {
   string_pool pool;
-  pool.add(qualified_name(cls));
+  pool.add(class_display_name(cls));
   pool.add("");
   for (auto ci : make_classinfos(cls)) {
     pool.add(ci.key.view());
