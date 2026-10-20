@@ -7,6 +7,7 @@
 #include <QtCore/QCoreApplication>
 
 #include <algorithm>
+#include <optional>
 #include <random>
 #include <vector>
 
@@ -70,11 +71,62 @@ void sorted() {
   }
   agree(index, expected);
 }
+
+// The multi indexes against a plain list of the keys of every row. For an unordered multi container the row order
+// is insertion order and the entry (key, n) is the n-th from the newest of that key; for a sorted one the rows
+// are ordered by key, the newest of a key first, so (key, n) sits at the key's first row plus n.
+template <class Index, bool Sorted>
+void multi() {
+  using Key = observable::MultiKey<int>;
+  Index index;
+  std::vector<int> rows;  // the key of each row
+  std::mt19937 rng(kSeed);
+  const auto first_row = [&](int key) { return static_cast<qsizetype>(std::lower_bound(rows.begin(), rows.end(), key) - rows.begin()); };
+  const auto occurrence = [&](std::size_t row) -> qsizetype {
+    if (Sorted) return static_cast<qsizetype>(row) - first_row(rows[row]);
+    qsizetype newer = 0;
+    for (std::size_t r = row + 1; r < rows.size(); ++r) newer += rows[r] == rows[row];
+    return newer;
+  };
+  const auto row_of = [&](int key, qsizetype n) -> std::optional<std::size_t> {
+    std::vector<std::size_t> of;
+    for (std::size_t r = 0; r < rows.size(); ++r)
+      if (rows[r] == key) of.push_back(r);
+    if (n < 0 || n >= static_cast<qsizetype>(of.size())) return std::nullopt;
+    return Sorted ? of[static_cast<std::size_t>(n)] : of[of.size() - 1 - static_cast<std::size_t>(n)];
+  };
+  const auto agrees = [&] {
+    for (std::size_t r = 0; r < rows.size(); ++r) {
+      const Key entry = index.keyAt(static_cast<qsizetype>(r));
+      CHECK(entry.key == rows[r] && entry.occurrence == occurrence(r));
+      CHECK(index.rowOf(entry) == static_cast<qsizetype>(r));
+    }
+  };
+  for (int step = 0; step < kSteps; ++step) {
+    const int key = static_cast<int>(rng() % 12);  // twelve keys: most entries share one
+    const bool drain = step % kDrainEvery > kDrainEvery - 800;
+    if (!drain && (rows.empty() || rng() % 3 != 0)) {
+      const qsizetype row = Sorted ? first_row(key) : static_cast<qsizetype>(rows.size());
+      CHECK(index.rowToInsert(Key{key, 0}) == row);
+      index.insert(Key{key, 0}, row);
+      rows.insert(rows.begin() + row, key);
+    } else if (const auto at = row_of(key, static_cast<qsizetype>(rng() % 4))) {
+      const Key entry{key, occurrence(*at)};
+      index.erase(entry, static_cast<qsizetype>(*at));
+      rows.erase(rows.begin() + static_cast<std::ptrdiff_t>(*at));
+    }
+    if (step % 101 == 0) agrees();
+  }
+  agrees();
+  index.clear();
+}
 }  // namespace
 
 int main(int argc, char** argv) {
   QCoreApplication app(argc, argv);
   insertion_order();
   sorted();
+  multi<observable::MultiSortedIndex<int>, true>();
+  multi<observable::MultiInsertionIndex<int>, false>();
   return rqt_test::finish("capability_row_index");
 }
