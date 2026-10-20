@@ -19,7 +19,8 @@ import sys
 SRC = os.environ.get("RQT_SRC", "/src")
 WORK = os.environ.get("RQT_MUTATE_WORK", "/tmp/rqt-mutate")
 TARGETS = ["capability_observable_models_stress", "capability_observable_models_flaws_detected",
-           "capability_observable_container_announcements", "capability_row_index"]
+           "capability_observable_container_announcements", "capability_row_index",
+           "capability_observable_ranges_edits"]
 TEST_TIMEOUT_SECONDS = 180
 DIR = "examples/qt/observable_models/"
 CONTAINER, MODEL, TRAITS = DIR + "observable_container.hpp", DIR + "container_model.hpp", DIR + "container_traits.hpp"
@@ -106,6 +107,22 @@ MUTANTS = [
     ("model: no container offers the key role", MODEL,
      "static constexpr bool hasKeyRole = Traits::order != observable::Order::indexed;",
      "static constexpr bool hasKeyRole = false;", False),
+    ("container: a range insert is never confirmed", CONTAINER, "      emit rangeAdded(first, last);\n", "", False),
+    ("container: a range insert is never announced", CONTAINER, "      emit rangeAboutToBeAdded(first, last);\n", "", False),
+    ("container: an empty range is accepted", CONTAINER,
+     "if (values.isEmpty() || !Traits::can_insert(m_items, first)) return false;",
+     "if (!Traits::can_insert(m_items, first)) return false;", False),
+    ("container: a range remove may pass the end", CONTAINER, " || first + count > Traits::size(m_items)", "", False),
+    ("container: a range remove is announced one row short", CONTAINER,
+     "const Key last = first + count - 1;\n      emit rangeAboutToBeRemoved", "const Key last = first + count - 2;\n      emit rangeAboutToBeRemoved", False),
+    ("model: a refused edit still replaces", MODEL,
+     "return edited && m_source->replace(key, *edited);", "return m_source->replace(key, edited.value_or(Value{}));", False),
+    ("model: every cell is editable", MODEL,
+     "if (index.isValid() && editable(index.column())) flags |= Qt::ItemIsEditable;", "if (index.isValid()) flags |= Qt::ItemIsEditable;", False),
+    ("model: a change reports one column", MODEL,
+     "static_cast<const QAbstractItemModel*>(this)->columnCount() - 1;", "0;", False),
+    ("model: a range insert is never ended", MODEL,
+     "this->endInsertRows(); });\n      QObject::connect(m_source, &Source::rangeAboutToBeRemoved", "});\n      QObject::connect(m_source, &Source::rangeAboutToBeRemoved", False),
     ("model: the key role answers nothing", MODEL,
      "    if (role == KeyRole && hasKeyRole) return QVariant::fromValue(key);\n", "", False),
     ("model: a sorted insert is announced at the end", MODEL,
