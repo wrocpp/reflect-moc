@@ -12,6 +12,7 @@ INC="-isystem $Q/include -isystem $Q/include/QtCore -isystem $Q/include/QtGui -i
 LIBS="-L$Q/lib -Wl,-rpath,$Q/lib -lQt6Qml -lQt6Gui -lQt6Core"
 CXX="g++ -std=c++26 -fPIC -Wall -Wextra -O2"
 echo "# $(uname -m), $(nproc) cores, load $(cut -d' ' -f1 /proc/loadavg)"
+grep -m1 "model name" /proc/cpuinfo || true
 "$Q/libexec/moc" -I$QV $QV/container_signals.h -o "$O/moc_cs.cpp"
 $CXX $INC $D/drain_probe.cpp $LIBS -o "$O/probe"
 $CXX -freflection -Iinclude $INC -I$QV -Iexamples/qt/observable_models $D/e2e.cpp $LIBS -o "$O/e2e_rqt"
@@ -35,3 +36,13 @@ g++ -std=c++26 -fPIC -O2 -S $INC $D/drain_probe.cpp -o "$O/asm/probe.s"
 objdump -d --no-show-raw-insn -C "$O/e2e_rqt" > "$O/asm/rqt.dump"
 objdump -d --no-show-raw-insn -C "$O/e2e_qv" > "$O/asm/qv.dump"
 if [ -n "${RQT_ASM_OUT:-}" ]; then cp -r "$O/asm/." "$RQT_ASM_OUT/"; fi
+
+echo "=== F. the same loop, padded so that no jump crosses a 32-byte boundary (x86_64 only), and with loops aligned to 64"
+if [ "$(uname -m)" = x86_64 ]; then
+  for flags in "-Wa,-mbranches-within-32B-boundaries" "-falign-loops=64"; do
+    echo "--- $flags"
+    g++ -std=c++26 -fPIC -Wall -Wextra -O2 $flags -freflection -Iinclude $INC -I$QV -Iexamples/qt/observable_models $D/e2e.cpp $LIBS -o "$O/e2e_rqt_f"
+    g++ -std=c++26 -fPIC -Wall -Wextra -O2 $flags -DBENCH_QV $INC -I$QV -Iexamples/qt/observable_models $D/e2e.cpp "$O/moc_cs.cpp" $LIBS -o "$O/e2e_qv_f"
+    for i in 1 2 3; do for b in qv rqt; do echo -n "$b "; "$O/e2e_${b}_f" --size 100000 --only QHash 2>/dev/null | grep -E "drain|replace" | cut -d, -f5,6 | tr '\n' ' '; echo; done; done
+  done
+fi
