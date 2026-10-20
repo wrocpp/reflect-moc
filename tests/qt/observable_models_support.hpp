@@ -391,6 +391,8 @@ Report run_random(unsigned seed, int steps, MakeModel&& make_model, bool stop_at
       expect(model->data(index, kKeyRole).template value<Key>() == expected.key);
       expect(model->data(index, Qt::DisplayRole).toInt() == expected.value);
     }
+    // A list has no children: a valid parent has no rows.
+    if (model->rowCount() > 0) expect(model->rowCount(model->index(0, 0)) == 0);
     // The selection follows its entries.
     QSet<int> selectedRows;
     for (const QModelIndex& index : selection.selectedRows()) selectedRows.insert(index.row());

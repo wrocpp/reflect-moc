@@ -43,6 +43,21 @@ Both run in ctest (`ctest --preset qt -R observable`).
   missing `endMoveRows`, a missing `endResetModel`) and requires every one to be reported, and the right adapter not
   to be.
 
+- `capability_observable_container_announcements` checks the container's own signals: each change is announced
+  before it happens and confirmed after, the container shows its old state at the announcement and its new state at
+  the confirmation, and a refused request announces nothing.
+
+## Mutation testing
+
+`scripts/mutate-observable-models.py` applies 31 hand-listed single-line mutants to a copy of these headers, rebuilds
+the three tests above and runs them. Mull needs clang and the image has only GCC, so the mutants are written by hand
+(`docker run --rm -v "$PWD":/src:ro -w /src reflect-moc/gcc16-qt610 python3 scripts/mutate-observable-models.py`).
+Result: 30 killed, 1 survived. The survivor counts a map's insert row from `upperBound` instead of `lowerBound`, which
+is equivalent for a key that is not in the map yet.
+
+The first run killed 24 and exposed two gaps, both closed: no test listened to the container's own announcements,
+and nothing checked that a list model reports no rows under a valid parent.
+
 ## What this does not show
 
 The tests come from the `QAbstractItemModel` contract, not from anyone's production code. They show that these
