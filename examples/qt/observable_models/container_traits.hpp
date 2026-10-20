@@ -45,9 +45,6 @@ struct ContainerTraits<QList<V>> {
   static void assign(QList<V>& c, Key k, V v) { c[k] = std::move(v); }
   static void move(QList<V>& c, Key from, Key to) { c.move(from, to); }
   static const V& value(const QList<V>& c, Key k) { return c.at(k); }
-  static Key key_at(const QList<V>&, qsizetype row) { return row; }
-  static qsizetype row_of(const QList<V>&, Key k) { return k; }
-  static qsizetype insert_row(const QList<V>&, Key k) { return k; }
   static QList<Key> keys(const QList<V>& c) {
     QList<Key> out;
     for (qsizetype i = 0; i < c.size(); ++i) out.append(i);
@@ -78,10 +75,7 @@ struct ContainerTraits<QMap<K, V>> {
   static void assign(QMap<K, V>& c, const K& k, V v) { c[k] = std::move(v); }
   static void move(QMap<K, V>&, const K&, const K&) {}
   static const V& value(const QMap<K, V>& c, const K& k) { return *c.constFind(k); }
-  static K key_at(const QMap<K, V>& c, qsizetype row) { return std::next(c.cbegin(), row).key(); }
-  static qsizetype row_of(const QMap<K, V>& c, const K& k) { return std::distance(c.cbegin(), c.constFind(k)); }
   // Where a key that is not in the map yet will land: before the first key that is not smaller.
-  static qsizetype insert_row(const QMap<K, V>& c, const K& k) { return std::distance(c.cbegin(), c.lowerBound(k)); }
   static QList<K> keys(const QMap<K, V>& c) { return c.keys(); }
 };
 

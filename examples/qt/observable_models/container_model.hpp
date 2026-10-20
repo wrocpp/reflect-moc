@@ -9,6 +9,7 @@
 #pragma once
 
 #include "observable_container.hpp"
+#include "row_index.hpp"
 
 #include <reflect_moc/qt/qt.hpp>
 
@@ -38,10 +39,7 @@ class ContainerModel : public QAbstractListModel {
 
   ContainerModel(Source* source, Formatter formatter, QObject* parent = nullptr)
       : QAbstractListModel(parent), m_source(source), m_formatter(std::move(formatter)) {
-    if constexpr (Traits::order == Order::unordered) {
-      const auto keys = Traits::keys(source->items());
-      m_order.assign(keys.begin(), keys.end());
-    }
+    m_index.assign(Traits::keys(source->items()));
     connectSource();
   }
 
@@ -64,36 +62,17 @@ class ContainerModel : public QAbstractListModel {
   }
 
  private:
-  Key keyAt(qsizetype row) const {
-    if constexpr (Traits::order == Order::unordered)
-      return m_order[static_cast<std::size_t>(row)];
-    else
-      return Traits::key_at(m_source->items(), row);
-  }
-
-  // The row of a key that is in the container now.
-  qsizetype rowOf(const Key& key) const {
-    if constexpr (Traits::order == Order::unordered)
-      return std::find(m_order.begin(), m_order.end(), key) - m_order.begin();
-    else
-      return Traits::row_of(m_source->items(), key);
-  }
-
-  // The row a key that is not in the container yet will occupy.
-  qsizetype rowToInsert(const Key& key) const {
-    if constexpr (Traits::order == Order::unordered)
-      return static_cast<qsizetype>(m_order.size());
-    else
-      return Traits::insert_row(m_source->items(), key);
-  }
+  Key keyAt(qsizetype row) const { return m_index.keyAt(row); }
+  qsizetype rowOf(const Key& key) const { return m_index.rowOf(key); }
+  qsizetype rowToInsert(const Key& key) const { return m_index.rowToInsert(key); }
 
   void connectSource() {
     connect(m_source, &Source::entryAboutToBeAdded, this, [this](const Key& key) {
-      const int row = static_cast<int>(rowToInsert(key));
-      beginInsertRows(QModelIndex(), row, row);
+      m_pendingRow = static_cast<int>(rowToInsert(key));
+      beginInsertRows(QModelIndex(), m_pendingRow, m_pendingRow);
     });
     connect(m_source, &Source::entryAdded, this, [this](const Key& key) {
-      if constexpr (Traits::order == Order::unordered) m_order.push_back(key);
+      m_index.insert(key, m_pendingRow);
       endInsertRows();
     });
 
@@ -101,8 +80,8 @@ class ContainerModel : public QAbstractListModel {
       m_pendingRow = static_cast<int>(rowOf(key));
       beginRemoveRows(QModelIndex(), m_pendingRow, m_pendingRow);
     });
-    connect(m_source, &Source::entryRemoved, this, [this](const Key&) {
-      if constexpr (Traits::order == Order::unordered) m_order.erase(m_order.begin() + m_pendingRow);
+    connect(m_source, &Source::entryRemoved, this, [this](const Key& key) {
+      m_index.erase(key, m_pendingRow);
       endRemoveRows();
     });
 
@@ -123,14 +102,14 @@ class ContainerModel : public QAbstractListModel {
 
     connect(m_source, &Source::aboutToBeCleared, this, [this] { beginResetModel(); });
     connect(m_source, &Source::cleared, this, [this] {
-      if constexpr (Traits::order == Order::unordered) m_order.clear();
+      m_index.clear();
       endResetModel();
     });
   }
 
   Source* m_source;
   Formatter m_formatter;
-  std::vector<Key> m_order;  // unordered containers only; a vector, because std::find scans it the same way wherever the code lands
+  typename RowIndexFor<Traits::order, Key>::type m_index;
   int m_pendingRow = -1;
 };
 
