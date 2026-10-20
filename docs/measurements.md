@@ -189,6 +189,27 @@ The QVariant column is within the noise of these everywhere from 10,000 entries 
 same runs); the full output is in the pull request. The 1,000-entry `QMap` figure above is from the seven-run table: in the three-run set that point read 3,467 ns
 (ratio 1.7 against QVariant), which did not repeat, so it is noise.
 
+### After the row index
+
+The models now keep a row index (`examples/qt/observable_models/row_index.hpp`): a sorted vector of keys for a map and
+a Fenwick tree over insertion slots for a hash or set, so a row is found from a key, and a key from a row, in
+logarithmic time. The QVariant twin takes the same index. Same machine as above (aarch64, busy: load 2.8 to 6, 5 runs,
+median), typed side, ns per change:
+
+| entries | change | linear scan (before) | row index (after) |
+|---|---|---|---|
+| `QHash`, 10,000 | replace | 2,463 | 98 |
+| `QHash`, 100,000 | replace | 27,827 | 137 |
+| `QHash`, 100,000 | drain | 21,032 | 257 |
+| `QMap`, 10,000 | replace | 53,789 | 255 |
+| `QMap`, 10,000 | drain | 25,012 | 507 |
+
+A change in a hash model is about 200 times cheaper at 100,000 entries, and a map about 200 times at 10,000. The
+typed against QVariant ratios stay inside the noise of this machine (0.78 to 1.22), so the row index does not change
+the comparison above, only the size of the numbers it is made of. A list needed none. Costs that remain are a
+memmove for an insert or erase in the sorted copy of a map's keys (linear in bytes, not in tree nodes), and the
+key list each model keeps.
+
 ### Build
 
 One translation unit that includes the container and model and runs the benchmark, `-O2 -c`, median of three:
