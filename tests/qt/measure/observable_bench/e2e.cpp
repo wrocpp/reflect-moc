@@ -108,13 +108,21 @@ void sweep(const char* name, const std::vector<int>& sizes) {
 int main(int argc, char** argv) {
   QCoreApplication app(argc, argv);
   const bool scale = argc > 1 && std::string(argv[1]) == "--scale";
-  const std::vector<int> sizes = scale ? std::vector<int>{100, 1000, 10000, 100000} : std::vector<int>{kDefaultSize};
+  // --size N [--only QList|QHash|QMap] runs one size, for chasing a single figure.
+  int one = 0;
+  std::string only;
+  for (int i = 1; i + 1 < argc; ++i) {
+    if (std::string(argv[i]) == "--size") one = std::atoi(argv[i + 1]);
+    if (std::string(argv[i]) == "--only") only = argv[i + 1];
+  }
+  const std::vector<int> sizes = one ? std::vector<int>{one}
+                                     : scale ? std::vector<int>{100, 1000, 10000, 100000} : std::vector<int>{kDefaultSize};
   const std::vector<int> mapSizes = scale ? std::vector<int>{100, 1000, 10000} : sizes;  // QMap's row count walks the tree
 
   std::printf("size,%s,QList<Sample>,%zu\n", kVariant, sizeof(impl::ObservableContainer<QList<Sample>>));
   std::printf("size,%s,QHash<quint32,Sample>,%zu\n", kVariant, sizeof(impl::ObservableContainer<QHash<quint32, Sample>>));
-  sweep<QList<Sample>>("QList", sizes);
-  sweep<QHash<quint32, Sample>>("QHash", sizes);
-  sweep<QMap<quint32, Sample>>("QMap", mapSizes);
+  if (only.empty() || only == "QList") sweep<QList<Sample>>("QList", sizes);
+  if (only.empty() || only == "QHash") sweep<QHash<quint32, Sample>>("QHash", sizes);
+  if (only.empty() || only == "QMap") sweep<QMap<quint32, Sample>>("QMap", mapSizes);
   return 0;
 }

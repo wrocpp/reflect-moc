@@ -9,6 +9,9 @@ on:
       runs:
         description: Repetitions of every timing
         default: '7'
+      script:
+        description: Script in tests/qt/measure/observable_bench to run (run.sh or drain_probe.sh)
+        default: run.sh
 
 permissions:
   contents: read
@@ -34,7 +37,7 @@ jobs:
       - name: QVariant split against typed signals
         run: |
           docker run --rm -e RQT_RUNS=${{ inputs.runs }} -v "$PWD":/src:ro -w /src "$IMAGE" \
-            bash tests/qt/measure/observable_bench/run.sh | tee bench.txt
+            bash tests/qt/measure/observable_bench/${{ inputs.script }} | tee bench.txt
       - uses: actions/upload-artifact@v4
         with:
           name: observable-bench
