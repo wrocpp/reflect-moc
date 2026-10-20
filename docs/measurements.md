@@ -139,19 +139,37 @@ ubuntu-24.04 runner, 4 cores, GCC 16.2.0, Qt 6.10.3, 7 runs, load 1 to 2.5. The 
 | `QList` | drain | 152.2 | 128.1 | 0.84 |
 | `QHash` | fill | 154.9 | 126.9 | 0.82 |
 | `QHash` | replace | 258.4 | 236.6 | 0.92 |
-| `QHash` | drain | 267.5 | 297.8 | **1.11** |
+| `QHash` | drain | 267.5 | 297.8 | 1.11 (code placement, see below) |
 | `QMap` | fill / replace / drain | 1279 / 2055 / 1262 | 1299 / 2046 / 1246 | 1.02 / 1.00 / 0.99 |
 
 Signal only: 51.2 against 38.1 ns for a `quint32` key, 64.2 against 37.8 for a `QString` and for the 32-byte
 struct. Sizes are the same as above. Compile, one translation unit: typed 7.29 s, QVariant 5.16 s plus 2.51 s for moc
 and its output (7.67 s). Binary 147,984 against 130,520 bytes.
 
-**One result goes against the typed version.** Draining a hash model (removing entries in random order) is slower
-with typed signals: 1.11 at 1,000 entries, 1.62 at 10,000 and 1.73 at 100,000 (16.1 against 9.3 microseconds per
-removal), with a spread under 1 percent. The Mac shows the same direction at 100,000 entries (1.22, three noisy runs).
-Replace and fill in the same model do not show it, and the `QMap` and `QList` rows are equal or better. I have not
-found the cause, and do not claim one: the two builds run the same model code for this path, and only the signal
-transport differs.
+**One result went against the typed version, and it was not the signals.** Draining a hash model (removing entries in
+random order) was slower with typed signals: 1.11 at 1,000 entries, 1.62 at 10,000 and 1.73 at 100,000 (16.1 against
+9.3 microseconds per removal), with a spread under 1 percent, and the Mac showed the same direction at 100,000
+entries (1.22, three noisy runs). Chasing it (the `investigate/hash-drain` runs, `drain_probe.sh` and
+`drain_profile.sh` in `tests/qt/measure/observable_bench`):
+
+- The scan that finds a key's row is a four-instruction loop, the same in both builds. In the typed build the
+  compiler placed it so that the fused compare and jump crosses a 32-byte boundary (`0x4084fe` to `0x408504`); in
+  the QVariant build it does not.
+- Building both with `-Wa,-mbranches-within-32B-boundaries` made them equal at 8.2 microseconds per removal. Building
+  both with `-falign-loops=64` made both slow, 15.1. The runner's CPU was an AMD EPYC, so this is not the Intel
+  jcc erratum by name; I did not find which fetch or branch mechanism it is, only that moving the loop moves the cost.
+- The cost is user time in the model's slots. `perf record` puts essentially all samples in the removal and replace
+  slots (the split is 46/46 typed and 60/30 QVariant, which is the expected 1:2 for a shrinking list against a fixed
+  one); system time is under 0.01 s and `strace -c` shows only start-up calls. Hardware counters are not available in the
+  runner's VM, so cycles, instructions and branch misses were not read.
+- Replace in the same model never showed a gap: its copy of the loop landed somewhere harmless.
+- With the key list as a `std::vector` and `std::find`, both builds cost 7.6 microseconds a removal and 11.9 a
+  replace, with no gap. On aarch64 `std::find` also scans about 35 percent faster than `QList::indexOf` (13 against 20
+  microseconds for 100,000 keys). The model now keeps its keys in a `std::vector`.
+
+So the gap measured between the designs on this path was code placement, not signal transport. The tables above were
+measured with the `QList` key list; the removal rows for a hash at 1,000 entries and above should be read with
+that in mind.
 
 ### How the cost grows
 
