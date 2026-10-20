@@ -9,7 +9,7 @@
 
 #include "check.hpp"
 
-#include <container_model.hpp>
+#include <container_traits.hpp>
 
 #include <QtCore/QAbstractItemModel>
 #include <QtCore/QItemSelectionModel>
@@ -298,11 +298,10 @@ struct Report {
 // Applies `steps` random changes to a container, and after each one compares the container, the model, the
 // view mirror, the selection and a persistent index with the reference. With `stop_at_first_violation` it
 // returns as soon as the watcher reports something.
-template <class C, class MakeModel>
+template <class C, class Source, class MakeModel>
 Report run_random(unsigned seed, int steps, MakeModel&& make_model, bool stop_at_first_violation = false) {
   using Traits = observable::ContainerTraits<C>;
   using Key = typename Traits::Key;
-  using Source = observable::ObservableContainer<C>;
 
   Source source;
   std::unique_ptr<QAbstractItemModel> model = make_model(&source);
