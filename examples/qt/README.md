@@ -16,6 +16,8 @@ Four examples from Qt 6.10.3, each kept twice:
 
 Upstream commits: qtbase `7ddbc87d8e14ce51d2957ea72d0a6077593d5ff4`, qtdeclarative `3a714efe0672ae1ba06f09864f64957560c69b91`.
 
+A fifth example is not from Qt: [`observable_container/`](observable_container/README.md) is a class template with typed signals, written by hand in two versions because moc cannot read a template.
+
 Results (proof that the ported builds run no moc and behave the same, migration cost, build time, size): [`RESULTS.md`](RESULTS.md).
 
 ## Licence

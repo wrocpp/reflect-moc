@@ -1,0 +1,9 @@
+rows 3
+row 0 = 10
+row 1 = 20
+row 2 = 30
+rowsAboutToBeInserted 3, rowsInserted 3
+insert 0 at row 0
+insert 1 at row 1
+insert 2 at row 1
+store size 1, value 7, unit 2, unitChanged 1
