@@ -1,0 +1,33 @@
+{
+ "classes": [
+  {
+   "className": "MixedSignals",
+   "lineNumber": 6,
+   "object": true,
+   "qualifiedClassName": "MixedSignals",
+   "signals": [
+    {
+     "access": "public",
+     "arguments": [
+      {
+       "name": "size",
+       "type": "int"
+      }
+     ],
+     "index": 0,
+     "lineNumber": 9,
+     "name": "resized",
+     "returnType": "void"
+    }
+   ],
+   "superClasses": [
+    {
+     "access": "public",
+     "name": "QObject"
+    }
+   ]
+  }
+ ],
+ "inputFile": "typed_parameter.h",
+ "outputRevision": 69
+}

@@ -1,0 +1,63 @@
+{
+ "classes": [
+  {
+   "className": "SiteSignals",
+   "lineNumber": 6,
+   "object": true,
+   "qualifiedClassName": "SiteSignals",
+   "signals": [
+    {
+     "access": "public",
+     "arguments": [
+      {
+       "name": "key",
+       "type": "QVariant"
+      }
+     ],
+     "index": 0,
+     "lineNumber": 9,
+     "name": "added",
+     "returnType": "void"
+    },
+    {
+     "access": "public",
+     "arguments": [
+      {
+       "name": "key",
+       "type": "QVariant"
+      }
+     ],
+     "index": 1,
+     "lineNumber": 10,
+     "name": "removed",
+     "returnType": "void"
+    },
+    {
+     "access": "public",
+     "arguments": [
+      {
+       "name": "from",
+       "type": "QVariant"
+      },
+      {
+       "name": "to",
+       "type": "QVariant"
+      }
+     ],
+     "index": 2,
+     "lineNumber": 11,
+     "name": "moved",
+     "returnType": "void"
+    }
+   ],
+   "superClasses": [
+    {
+     "access": "public",
+     "name": "QObject"
+    }
+   ]
+  }
+ ],
+ "inputFile": "sites.h",
+ "outputRevision": 69
+}

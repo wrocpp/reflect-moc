@@ -8,7 +8,7 @@ import re
 import shutil
 from dataclasses import dataclass
 
-from . import cmake, ctors, optin, qml, syntax
+from . import cmake, ctors, fold, optin, qml, syntax
 from .classes import rewrite_classes
 from .moc import JsonProvider
 from .report import Report, render
@@ -103,6 +103,7 @@ def migrate(src_root: str, provider: JsonProvider, options: Options, dst_root: s
             report.manual(rel, 0, "Q_NAMESPACE", "namespace meta-objects are not supported")
         if classes:
             per_file.append((rel, classes))
+    folds, per_file = fold.plan(per_file, sources, report)
     all_classes = [c for _, classes in per_file for c in classes]
     object_names = {c["className"] for c in all_classes if c.get("object")}
     static_meta = optin.required(list(blanked.values()), all_classes)
@@ -125,6 +126,8 @@ def migrate(src_root: str, provider: JsonProvider, options: Options, dst_root: s
         bases += result.bases
         migrated += result.migrated_classes
         declared_only += [(rel, name) for name in result.out_of_line]
+
+    fold.apply(folds, sources, report, options.style == syntax.QTLIKE and options.macros == syntax.MACROS_Q)
 
     bound: dict[str, int] = {}
     for rel, src in sources.items():

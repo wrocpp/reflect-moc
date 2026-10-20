@@ -89,6 +89,22 @@ def signal_member(types: list[str], name: str) -> str:
     return f"rqt::signal<void({', '.join(types)})> {name};"
 
 
+# The signals-only base folded into its class template (fold.py): the template becomes its own
+# Q_OBJECT-style class, and a key travels as the template's `Key` alias instead of a QVariant.
+FOLD_KEY_ALIAS = "Key"
+QOBJECT_INCLUDE = "#include <QtCore/QObject>"
+
+
+def fold_object_macro(compat: bool) -> str:
+    """The macro that goes first in the template's body: the library's, or Qt's through compat.hpp."""
+    return "Q_OBJECT" if compat else "RQT_OBJECT"
+
+
+def key_parameter(key: str = FOLD_KEY_ALIAS) -> str:
+    """The parameter type that replaces `const QVariant&` once the key is typed."""
+    return f"const {key}&"
+
+
 def signal_names(names: list[str]) -> str:
     """The annotation that keeps parameter names for QML handlers: one comma-separated string,
     an unnamed parameter being an empty entry."""

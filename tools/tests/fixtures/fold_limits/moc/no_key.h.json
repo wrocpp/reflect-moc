@@ -1,0 +1,33 @@
+{
+ "classes": [
+  {
+   "className": "NoKeySignals",
+   "lineNumber": 6,
+   "object": true,
+   "qualifiedClassName": "NoKeySignals",
+   "signals": [
+    {
+     "access": "public",
+     "arguments": [
+      {
+       "name": "key",
+       "type": "QVariant"
+      }
+     ],
+     "index": 0,
+     "lineNumber": 9,
+     "name": "changed",
+     "returnType": "void"
+    }
+   ],
+   "superClasses": [
+    {
+     "access": "public",
+     "name": "QObject"
+    }
+   ]
+  }
+ ],
+ "inputFile": "no_key.h",
+ "outputRevision": 69
+}
