@@ -20,10 +20,22 @@ reflect-moc (GCC 16.2, Qt 6.10).
 |---|---|---|
 | `QList<T>`, `QQueue<T>`, `QStack<T>`, `QStringList` | the index (the model offers no key role: the row is the identity, and it shifts without a signal) | the index |
 | `QMap<K, V>` | the key | the key order |
-| `QHash<K, V>`, `QSet<K>` | the key | the order entries were added (the model keeps a key list) |
+| `QHash<K, V>`, `QSet<K>` | the key | the order entries were added |
+| `QMultiMap<K, V>` | a `MultiKey`: the key and the occurrence, 0 the most recently inserted (no key role, the occurrence shifts) | the key order, the newest of a key first |
+| `QMultiHash<K, V>` | a `MultiKey`, as above | the order entries were added |
 
-Not supported: `QMultiMap` and `QMultiHash`. Two entries can share a key there, so a key does not identify an entry;
-the container would need another identity (an iterator or an id) and a different signal payload.
+A new entry of a multi container is occurrence 0 and the older ones of its key move up, so an insert with another
+occurrence is refused. The models find a row from a key in logarithmic time (`row_index.hpp`): the key itself for a
+list, a sorted copy of the keys for a map, a Fenwick tree over insertion slots for a hash or set.
+
+## What else the models do
+
+- `insertRange` and `removeRange` change a run of a list in one announcement, so a model makes one begin and one end.
+- `setData` builds the new value with the column's editor and calls `replace`; a column without an editor is read only.
+- `ContainerTableModel<C>` gives one column per `Column` (header, display function, optional editor).
+- A container and its models live in one thread. A debug build asserts it; move data between threads, not the model.
+- A value type whose move can throw is refused at compile time: a Qt container allocates inside the insert, so a
+  throw between the "about" and the "done" signal could not be undone.
 
 A mutator that is asked for something invalid (an index out of range, a key already present, a replace of a missing
 key, a move in a container with no order) returns `false`, changes nothing and emits nothing. A `QSet` has no value to
