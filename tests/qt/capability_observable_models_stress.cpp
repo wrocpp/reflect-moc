@@ -16,8 +16,9 @@ constexpr int kSteps = 4000;
 constexpr unsigned kSeeds[] = {1, 2, 3, 4, 5, 6, 7, 8};
 }  // namespace
 
+// The same random changes drive the list model and a table model whose first column is the list model's one.
 template <class C>
-bool stress(const char* name) {
+bool stress(const char* name, bool table = false) {
   using Traits = observable::ContainerTraits<C>;
   using Key = typename Traits::Key;
   using Value = typename Traits::Value;
@@ -27,8 +28,13 @@ bool stress(const char* name) {
   for (const unsigned seed : kSeeds) {
     std::unique_ptr<QAbstractItemModelTester> tester;
     const auto report = observable_test::run_random<C, observable::ObservableContainer<C>>(seed, kSteps, [&](observable::ObservableContainer<C>* source) {
-      auto model = std::make_unique<observable::ContainerModel<C>>(
-          source, [](const Key& key, const Value& value) { return QVariant(observable_test::Make<C>::shown(key, value)); });
+      const auto shown = [](const Key& key, const Value& value) { return QVariant(observable_test::Make<C>::shown(key, value)); };
+      std::unique_ptr<QAbstractItemModel> model;
+      if (table)
+        model = std::make_unique<observable::ContainerTableModel<C>>(
+            source, std::vector<observable::Column<C>>{{"value", shown}, {"again", shown}});
+      else
+        model = std::make_unique<observable::ContainerModel<C>>(source, shown);
       tester = std::make_unique<QAbstractItemModelTester>(model.get(), QAbstractItemModelTester::FailureReportingMode::Fatal);
       return model;
     }, /*stop_at_first_violation=*/false, /*with_proxy=*/true);
@@ -41,7 +47,7 @@ bool stress(const char* name) {
     }
     tester.reset();
   }
-  std::printf("%-22s %d changes applied, %d invalid requests refused\n", name, applied, refused);
+  std::printf("%-22s %-5s %d changes applied, %d invalid requests refused\n", name, table ? "table" : "list", applied, refused);
   return ok;
 }
 
@@ -55,5 +61,9 @@ int main(int argc, char** argv) {
   CHECK((stress<QMap<int, Sample>>("QMap")));
   CHECK((stress<QHash<unsigned, Sample>>("QHash")));
   CHECK(stress<QSet<unsigned>>("QSet"));
+  CHECK(stress<QList<Sample>>("QList", true));
+  CHECK((stress<QMap<int, Sample>>("QMap", true)));
+  CHECK((stress<QHash<unsigned, Sample>>("QHash", true)));
+  CHECK(stress<QSet<unsigned>>("QSet", true));
   return rqt_test::finish("capability_observable_models_stress");
 }
