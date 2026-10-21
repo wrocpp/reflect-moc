@@ -51,7 +51,12 @@ class ObservableContainer : public QObject {
                 "because a throw between the 'about' and the 'done' signal leaves every model mid-change");
 
   explicit ObservableContainer(QObject* parent = nullptr) : QObject(parent) {}
-  explicit ObservableContainer(C items, QObject* parent = nullptr) : QObject(parent), m_items(std::move(items)) {}
+  // A content with a key that cannot be found again (a NaN) loses those entries; one with more than kMaxRows entries is
+  // more than a model can number and asserts (a later resetWith refuses it instead).
+  explicit ObservableContainer(C items, QObject* parent = nullptr) : QObject(parent), m_items(std::move(items)) {
+    drop_unusable_keys(m_items);
+    Q_ASSERT_X(Traits::size(m_items) <= kMaxRows, "observable::ObservableContainer", "more entries than a model can number (kMaxRows)");
+  }
 
   const C& items() const { return m_items; }
   qsizetype size() const { return Traits::size(m_items); }
@@ -72,7 +77,7 @@ class ObservableContainer : public QObject {
   // Adds an entry. A list takes any index up to its size; a map, hash or set takes a key it does not hold.
   bool insert(const Key& key, Value value = Value{}) {
     assertOwnThread();
-    if (refusedAsNested() || !Traits::can_insert(m_items, key)) return false;
+    if (refusedAsNested() || !Traits::can_insert(m_items, key) || !fits_rows(Traits::size(m_items), 1)) return false;
     const Announcing announcing(*this);
     emit entryAboutToBeAdded(key);
     Traits::insert(m_items, key, std::move(value));
@@ -147,7 +152,9 @@ class ObservableContainer : public QObject {
       return false;
     } else {
       assertOwnThread();
-      if (refusedAsNested() || values.isEmpty() || !Traits::can_insert(m_items, first)) return false;
+      if (refusedAsNested() || values.isEmpty() || !Traits::can_insert(m_items, first) ||
+          !fits_rows(Traits::size(m_items), values.size()))
+        return false;
       const Key last = first + values.size() - 1;
       const Announcing announcing(*this);
       emit rangeAboutToBeAdded(first, last);
@@ -185,7 +192,7 @@ class ObservableContainer : public QObject {
       QList<Key> keys;
       for (const Key& key : Traits::keys(entries))
         if (Traits::can_insert(m_items, key)) keys.append(key);
-      if (keys.isEmpty()) return 0;
+      if (keys.isEmpty() || !fits_rows(Traits::size(m_items), keys.size())) return 0;
       const Announcing announcing(*this);
       emit entriesAboutToBeAdded(keys);
       for (const Key& key : keys) Traits::insert(m_items, key, Traits::value(entries, key));
@@ -232,13 +239,18 @@ class ObservableContainer : public QObject {
 
   // Replaces the whole content in one step, between one pair of signals. It always announces, even when the old
   // and the new content are both empty, and no listener ever sees a container that is empty in between.
-  void resetWith(C content) {
+  // Entries with a key that cannot be found again (a NaN) are dropped from the content, and a content of more than
+  // kMaxRows entries is refused: nothing is announced and false is returned.
+  bool resetWith(C content) {
     assertOwnThread();
-    if (refusedAsNested()) return;
+    if (refusedAsNested()) return false;
+    drop_unusable_keys(content);
+    if (Traits::size(content) > kMaxRows) return false;
     const Announcing announcing(*this);
     emit aboutToBeReset();
     m_items = std::move(content);
     emit resetCompleted();
+    return true;
   }
 
   // Removes every entry. An empty container announces nothing.
