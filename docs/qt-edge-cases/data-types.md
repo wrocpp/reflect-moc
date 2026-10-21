@@ -1,4 +1,43 @@
 # data-types
 
+Keys and values of the observable containers: what Qt treats as one key, what a value type must be, what is copied,
+and what the model does with a hash's order. The tests are in `tests/qt/edge/`: `capability_edge_data_keys`,
+`capability_edge_data_values`, `capability_edge_data_hash_order` and the pinned `limit_edge_data_*`.
+Where a case is refused by the compiler, a test cannot show it running: the row says so, and the test checks the
+type traits that decide it and runs the part of the interface that does compile. No QTBUG id is cited: none of
+these cases was found in the bug tracker, so the sources are the Qt class documentation and `own`.
+
 | id | case | source | test | verdict |
 |---|---|---|---|---|
+| D-01 | QMap<double>: -0.0 and 0.0 are one key, the first inserted stays | doc:QMap | capability_edge_data_keys::negative_zero_is_zero | works |
+| D-02 | QHash<double>: -0.0 and 0.0 are one key (qHash maps both to one hash) | doc:QHash | capability_edge_data_keys::negative_zero_is_zero | works |
+| D-03 | QMap<double> with a NaN key: NaN is equivalent to every key, so the entry is found, replaced and removed by any key, nothing else can be inserted, and a NaN insert into a non-empty map is refused; the model stays consistent | doc:QMap | limit_edge_data_nan_keys::a_nan_key_in_a_map_matches_every_key | pinned |
+| D-04 | QHash<double> and QSet<double> with NaN keys: every insert adds an entry that contains, remove and replace can never find again; only clear or resetWith removes them | doc:QHash | limit_edge_data_nan_keys::a_nan_key_in_a_hash_cannot_be_found_again | pinned |
+| D-05 | float keys compare exactly; -0.0f and 0.0f are one key; a double that rounds to the same float is the same key | doc:QMap | capability_edge_data_keys::float_keys_compare_exactly | works |
+| D-06 | a null QString and an empty one are one key (QMap, QHash, QSet), the first stays and the key role returns it unchanged | doc:QString | capability_edge_data_keys::null_and_empty_string_are_one_key | works |
+| D-07 | Unicode keys: QMap<QString> orders by UTF-16 code unit, not code point, case or locale; no normalisation (e + U+0301 and U+00E9 are two keys); the model's rows equal QMap::keys() under C, Swedish and Polish default locales | doc:QString | capability_edge_data_keys::unicode_keys_follow_the_code_unit_order | works |
+| D-08 | keys with an embedded NUL (QString and QByteArray) keep their size in comparison and hash | doc:QString | capability_edge_data_keys::embedded_nul_keys | works |
+| D-09 | QByteArray keys: unsigned byte order, null equals empty, key role round trip | doc:QByteArray | capability_edge_data_keys::byte_array_keys | works |
+| D-10 | QDateTime keys are instants: one instant in two zones is one key, every invalid value is one key, the first zone stays | doc:QDateTime | capability_edge_data_keys::date_time_keys_are_instants | works |
+| D-11 | QUrl keys: scheme and host are case-insensitive, the fragment counts | doc:QUrl | capability_edge_data_keys::url_keys | works |
+| D-12 | a struct key with operator<, == and qHash: rows follow the container, the key role round-trips, no Q_DECLARE_METATYPE needed in Qt 6 | own | capability_edge_data_keys::custom_struct_keys | works |
+| D-13 | a qHash that collides for every key changes speed, not answers or row order | own | capability_edge_data_keys::colliding_hash_keys | works |
+| D-14 | a key whose std::less specialisation differs from operator<: QMap orders by std::less, the model's SortedIndex searches with operator<; rows land wrong and a removal leaves a ghost row | own | limit_edge_data_key_order::a_removal_drops_the_wrong_row | pinned |
+| D-15 | a key without a default constructor works in a map and a hash (the traits only copy keys) | own | capability_edge_data_keys::keys_without_a_default_constructor | works |
+| D-20 | a move-only value (std::unique_ptr) passes the nothrow-move static_assert, but QList cannot even append it and every mutator, editValue and ContainerModel (virtual setData copies into replace) fail to compile inside Qt or the container; covered by the traits and by the part that compiles (declaration, size, resetWith, clear); the compile errors were verified once by hand | own | capability_edge_data_values::a_move_only_value_gets_through_the_gate_and_not_far_beyond | refused |
+| D-21 | a value without a default constructor: insert, takeMany, insertMany work in a map and hash and everything works in a list; replace and ContainerModel over a map or hash do not compile because Traits::assign uses operator[] (a compile-time refusal by accident, covered by the traits and the part that compiles) | own | capability_edge_data_values::a_value_without_a_default_constructor | refused |
+| D-22 | copies per call (QMap, QHash, QList): insert 1 (QMap::insert takes const T&), replace 0, editValue 1, insertMany 2 per entry, takeMany 2 per entry, resetWith 0, list insert and insertRange 0 | own | capability_edge_data_values::copies_per_operation | works |
+| D-23 | a copy that throws in editValue, or an edit that throws, changes nothing and emits nothing | doc:QAbstractItemModel | capability_edge_data_values::a_throwing_copy_in_editValue_changes_nothing | works |
+| D-24 | insertMany copies each value after announcing the batch: a throwing copy leaves "about" without "done", the container ahead of the model by the entries already inserted | own | limit_edge_data_insertmany_throwing_copy::a_throwing_copy_leaves_the_model_behind_the_container | pinned |
+| D-25 | takeMany copies before it announces, so a throwing copy changes nothing | own | capability_edge_data_values::a_throwing_copy_in_takeMany_changes_nothing | works |
+| D-26 | implicitly shared values (QString, QByteArray, QStringList): a copy of items() taken before an insert, replace, editValue, remove or resetWith keeps its content | doc:Implicit Sharing | capability_edge_data_values::a_snapshot_survives_every_change | works |
+| D-27 | the reference from value(key) does not follow the entry once a copy of items() is held (the change detaches); it is valid until the next change; items() is one object | own | limit_edge_data_value_reference::a_reference_is_not_followed_across_a_detach | pinned |
+| D-30 | rowCount is int and a Qt container counts in qsizetype: a size of 2^31 reads as a negative row count and 2^32 + 3 as 3, through static_cast<int> in the constructor and after a reset | doc:QAbstractItemModel | limit_edge_data_size_int_cast::a_size_past_int_max_wraps | pinned |
+| D-31 | a QHash or QSet is listed in insertion order through growth, rehash, removals and compaction; the container's own order differs | own | capability_edge_data_hash_order::rows_follow_insertion_through_rehash | works |
+| D-32 | the random driver is clean under the deterministic QHash seed and under four random ones (QHash and QSet) | doc:QHash | capability_edge_data_hash_order::results_do_not_depend_on_the_hash_seed | works |
+| D-33 | content that arrives whole (constructor, resetWith, insertMany argument) is listed in the hash's iteration order, which changes with the seed: the same entries show different rows in two runs | own | limit_edge_data_hash_seed_order::the_first_fill_follows_the_seed | pinned |
+| D-34 | a QHash given room with reserve keeps insertion order and its capacity | doc:QHash | capability_edge_data_hash_order::a_reserved_hash_keeps_insertion_order | works |
+| D-35 | a QSet refuses a repeat, in an insert and in a batch, with nothing announced; replace and editValue return false | doc:QSet | capability_edge_data_hash_order::a_set_refuses_a_repeat | works |
+| D-36 | a QMultiHash keeps duplicates (even equal pairs) as rows in insertion order, numbers them from the newest, refuses a missing occurrence and any insert with occurrence above 0, and refuses batches | doc:QMultiHash | capability_edge_data_hash_order::a_multi_hash_keeps_duplicates | works |
+| D-37 | the key role gives back a key equal to the container's for int, unsigned, qint64, QString, QByteArray, QUrl, QDateTime, double, float, QChar, bool, a struct, in a map, hash and set | own | capability_edge_data_keys::the_key_role_round_trips_for_every_key_type | works |
+| D-38 | the key role is Qt::UserRole named "key": UserRole + 1 is empty, setData with it is refused, itemData (roles below UserRole) does not carry it, a list has no key role | doc:QAbstractItemModel | capability_edge_data_keys::the_key_role_sits_at_user_role | works |
