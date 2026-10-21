@@ -1,9 +1,12 @@
-// R-01..R-09: a receiver of a signal of a container, or of its model, mutates the same container while the
-// announcement is still going out. Every mutator is tried from every phase (the "about" and the "done" signal)
-// and from a receiver connected before and after the model's own connection, for a list and for a map.
+// A receiver of a signal of a container, or of its model, mutates the same container while the announcement is still
+// going out. Every mutator is tried from every phase (the "about" and the "done" signal) and from a receiver
+// connected before and after the model's own connection, for a list and for a map.
 //
-// While no rule forbids it the nested call is accepted and the model is told about a change inside a change.
-// Each case runs in a child process, because that outcome is allowed to be a crash.
+// The rule: the nested call is refused. It returns false (0, an empty container), changes nothing, emits nothing, and
+// a debug build asserts. The same file is built twice. In a debug build every case runs in a child process and must
+// end in SIGABRT (a case in which the call was not possible in that state may end quietly). In the build that
+// defines QT_NO_DEBUG (capability_edge_reentrancy_release) the calls return, and the content and the model's
+// announcements must equal those of the same change made without a receiver.
 #include "edge_support.hpp"
 
 #include <QtCore/QCoreApplication>
@@ -126,8 +129,18 @@ int scenario(const Outer<Kit>& out, const Nested<Kit>& nested, Where where, Phas
 }
 
 struct Tally {
-  int total = 0, crashed = 0, dirty = 0, refused = 0, skipped = 0, differs = 0;
+  int total = 0, aborted = 0, refused = 0, failed = 0;
 };
+
+// What a case must come to. A debug build asserts, so the child aborts; a call that was not possible in the state it was
+// made in may return before it reaches the assertion. Without the assertion the call is refused and nothing else happens.
+bool holds(int code) {
+#ifndef QT_NO_DEBUG
+  return code == -SIGABRT || (code >= 0 && (code & kSkipped));
+#else
+  return code >= 0 && !(code & (kDirty | kDiffers)) && (code & (kRefused | kSkipped));
+#endif
+}
 
 template <class Kit>
 Tally sweep(const std::vector<Outer<Kit>>& outers, const std::vector<Nested<Kit>>& nesteds, Where where,
@@ -140,13 +153,11 @@ Tally sweep(const std::vector<Outer<Kit>>& outers, const std::vector<Nested<Kit>
         const int code = forked([&] { return scenario<Kit>(out, nested, where, phase); });
         if (code == kNoHook) continue;
         ++t.total;
-        if (code >= 0 && (code & kRefused)) std::printf("  refused: %s %s phase %d nested %s\n", Kit::kName, out.name.c_str(), static_cast<int>(phase), nested.name.c_str());
-        if (code < 0) ++t.crashed;
-        else {
-          if (code & kDirty) ++t.dirty;
-          if (code & kRefused) ++t.refused;
-          if (code & kSkipped) ++t.skipped;
-          if (code & kDiffers) ++t.differs;
+        if (code == -SIGABRT) ++t.aborted;
+        if (code >= 0 && (code & kRefused)) ++t.refused;
+        if (!holds(code)) {
+          ++t.failed;
+          std::printf("  %s %s phase %d nested %s: code %d\n", Kit::kName, out.name.c_str(), static_cast<int>(phase), nested.name.c_str(), code);
         }
       }
   }
@@ -154,8 +165,7 @@ Tally sweep(const std::vector<Outer<Kit>>& outers, const std::vector<Nested<Kit>
 }
 
 void report(const char* what, const Tally& t) {
-  std::printf("%-34s %4d cases: %d crashed, %d dirty, %d differ, %d refused, %d skipped\n", what, t.total, t.crashed, t.dirty,
-              t.differs, t.refused, t.skipped);
+  std::printf("%-34s %4d cases: %d aborted, %d refused, %d failed\n", what, t.total, t.aborted, t.refused, t.failed);
 }
 
 // Every nested mutator, from the given outer changes, for a list and for a map. Nothing refuses a nested change,
@@ -166,8 +176,13 @@ void sweep_both(const char* what, Where where, const std::vector<std::string>& o
   report((std::string("list, ") + what).c_str(), l);
   report((std::string("map, ") + what).c_str(), m);
   CHECK(l.total + m.total > 0);
-  CHECK(l.refused == 0 && m.refused == 0);
-  CHECK(l.crashed + l.dirty + l.differs + m.crashed + m.dirty + m.differs > 0);
+#ifndef QT_NO_DEBUG
+  CHECK(l.aborted + m.aborted > 0);
+  CHECK(l.failed == 0 && m.failed == 0);
+#else
+  CHECK(l.refused + m.refused > 0);
+  CHECK(l.failed == 0 && m.failed == 0);
+#endif
 }
 
 const std::vector<std::string> kSingle{"insert", "remove", "replace", "editValue", "move"};
@@ -196,5 +211,8 @@ int main(int argc, char** argv) {
   receiver_before_the_model();
   model_row_and_data_signals();
   model_reset_signals();
-  return rqt_test::finish("limit_edge_reentrancy");
+#ifndef EDGE_TEST_NAME
+#define EDGE_TEST_NAME "capability_edge_reentrancy"
+#endif
+  return rqt_test::finish(EDGE_TEST_NAME);
 }

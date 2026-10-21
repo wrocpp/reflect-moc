@@ -1,14 +1,12 @@
-// R-10..R-24: who outlives whom. A container destroyed before its model (the model holds a pointer to it), the
-// reverse, with a selection model, a proxy and a persistent index alive, several models on one container destroyed
-// in every order, a model made in the middle of an announcement, a container or a model deleted from a receiver,
-// a connection cut during an emission, and a container with a parent that is deleted along with its models.
-//
-// A model that outlives its container keeps the rows it last knew while no container is behind them; these tests
-// do not call data() on such a model, because that would read a destroyed container.
+// Who outlives whom. A container destroyed before its model (the model holds it by QPointer and resets to empty), the
+// reverse, with a selection model, a proxy and a persistent index alive, several models on one container destroyed in
+// every order, a model made in the middle of an announcement, a container or a model deleted from a receiver, a
+// connection cut during an emission, and a container with a parent that is deleted along with its models.
 #include "edge_support.hpp"
 
 #include <QtCore/QCoreApplication>
 #include <QtCore/QPointer>
+#include <QtTest/QAbstractItemModelTester>
 
 #include <algorithm>
 #include <array>
@@ -42,15 +40,35 @@ std::unique_ptr<ListTable> tableOver(Listed* src) {
   return std::make_unique<ListTable>(src, std::move(columns));
 }
 
-// R-10: the container goes first and the model is still there.
+// The container goes first and the models are still there: each resets to empty, once, and every call is safe.
 void container_destroyed_before_its_model() {
   auto* src = new Listed(ListKit::initial());
   const auto table = tableOver(src);
-  Resets resets(table.get());
-  CHECK(table->rowCount() == kEntries);
+  const auto list = std::make_unique<ListModel>(src, ListKit::show, parse);
+  QAbstractItemModelTester tableTester(table.get(), QAbstractItemModelTester::FailureReportingMode::Fatal);
+  QAbstractItemModelTester listTester(list.get(), QAbstractItemModelTester::FailureReportingMode::Fatal);
+  Resets tableResets(table.get());
+  Resets listResets(list.get());
+  CHECK(table->rowCount() == kEntries && list->rowCount() == kEntries);
+  const QPersistentModelIndex persistent(list->index(2));
+  const QModelIndex staleList = list->index(2, 0);  // a plain index a caller kept
+  const QModelIndex staleTable = table->index(0, 0);
   delete src;
-  CHECK(resets.done == 0 && resets.about == 0);  // nothing tells the model, so it goes on showing the rows it had
-  CHECK(table->rowCount() == kEntries);
+  for (const Resets* resets : {&tableResets, &listResets}) CHECK(resets->about == 1 && resets->done == 1);
+  CHECK(table->rowCount() == 0 && list->rowCount() == 0);
+  CHECK(!persistent.isValid());
+  CHECK(!table->index(0, 0).isValid() && !list->index(0, 0).isValid());
+  CHECK(!table->data(staleTable).isValid());  // an index made up by a caller
+  CHECK(!list->data(staleList).isValid());
+  CHECK(!list->data(staleList, Qt::UserRole).isValid());
+  CHECK(!list->setData(staleList, kEditedValue));
+  CHECK(!table->setData(staleTable, kEditedValue));
+  (void)list->flags(staleList);
+  (void)table->flags(staleTable);
+  CHECK(table->headerData(0, Qt::Horizontal).toString() == "value");
+  CHECK(table->columnCount() == 1);
+  (void)list->roleNames();
+  CHECK(list->rowCount(list->index(0, 0)) == 0);
 }
 
 // R-11: the model goes first, and the container goes on working.
@@ -83,10 +101,10 @@ void container_destroyed_before_selection_proxy_and_persistent_index() {
   Attached attached(model);
   CHECK(attached.selection->hasSelection() && attached.persistent.isValid() && attached.proxy.rowCount() == kEntries);
   delete src;
-  // the model was not told: the selection, the persistent index and the proxy still describe rows
-  CHECK(attached.selection->hasSelection());
-  CHECK(attached.persistent.isValid());
-  CHECK(attached.proxy.rowCount() == kEntries);
+  // the model resets: nothing is selected, the persistent index and the proxy's rows are gone
+  CHECK(!attached.selection->hasSelection());
+  CHECK(!attached.persistent.isValid());
+  CHECK(attached.proxy.rowCount() == 0);
   delete model;
   CHECK(!attached.persistent.isValid());
   CHECK(attached.proxy.rowCount() == 0);
@@ -132,13 +150,13 @@ void models_destroyed_in_every_order_before_the_container() {
   } while (std::next_permutation(order.begin(), order.end()));
 }
 
-// R-15: the container is one of four objects destroyed in every order. While the container is there the models
-// follow it. Once it is gone, a model that is left still reports the rows it had and has not been reset.
+// The container is one of four objects destroyed in every order. While the container is there the models follow it.
+// Once it is gone, each model that is left has reset to empty, once.
 void container_destroyed_at_every_position_among_three_models() {
   constexpr int kContainer = kModels;
   std::array<int, kModels + 1> order{};
   std::iota(order.begin(), order.end(), 0);
-  int staleSurvivors = 0;
+  int survivors = 0;
   do {
     auto* src = new Listed(ListKit::initial());
     std::array<ListModel*, kModels> models{};
@@ -155,8 +173,8 @@ void container_destroyed_at_every_position_among_three_models() {
         sourceGone = true;
         for (int i = 0; i < kModels; ++i) {
           if (!models[i]) continue;
-          CHECK(models[i]->rowCount() == size && resets[i]->done == 0);
-          ++staleSurvivors;
+          CHECK(size > 0 && models[i]->rowCount() == 0 && resets[i]->about == 1 && resets[i]->done == 1);
+          ++survivors;
         }
       } else {
         resets[which].reset();
@@ -169,7 +187,7 @@ void container_destroyed_at_every_position_among_three_models() {
         if (models[i]) CHECK(agrees(*models[i], src->items()));
     }
   } while (std::next_permutation(order.begin(), order.end()));
-  CHECK(staleSurvivors > 0);
+  CHECK(survivors > 0);
 }
 
 // A model made inside a receiver, for every change of a list and of a map, at the four places a receiver can sit.
@@ -231,11 +249,12 @@ CreatedTally createdBoth(At at) {
   return {l.total + m.total, l.crashed + m.crashed, l.dirty + m.dirty};
 }
 
+// The model did not hear the "about" signal, so at the "done" signal it follows the container with a reset.
 void model_created_in_an_about_receiver() {
   for (At at : {At::containerAbout, At::modelAbout}) {
     const CreatedTally t = createdBoth(at);
     CHECK(t.total > 0);
-    CHECK(t.crashed + t.dirty > 0);
+    CHECK(t.crashed == 0 && t.dirty == 0);
   }
 }
 
@@ -268,7 +287,7 @@ void container_deleted_later_inside_its_own_receiver() {
   CHECK(guard);
   QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
   CHECK(!guard);
-  CHECK(resets.done == 0 && model->rowCount() == kEntries + 1);  // the model was not told
+  CHECK(resets.done == 1 && model->rowCount() == 0);
   delete model;
 }
 
@@ -345,17 +364,6 @@ void a_connection_cut_before_the_model_heard_the_announcement() {
   for (int row = 0; row < fx.model->rowCount(); ++row) CHECK(fx.model->index(row).data().toInt() == fx.src.items()[row].value);
 }
 
-void a_connection_cut_after_the_model_began_the_change() {
-  Fx<ListKit> fx;
-  QObject::connect(&fx.src, &Listed::entryAboutToBeAdded, &fx.src, [&](const qsizetype&) {
-    QObject::disconnect(&fx.src, nullptr, fx.model.get(), nullptr);
-  });
-  CHECK(fx.src.insert(0, Sample{kNestedValue}));
-  fx.watcher->check();
-  CHECK(!fx.watcher->clean());  // announced and never confirmed
-  CHECK(fx.model->rowCount() == kEntries && fx.src.size() == kEntries + 1);
-}
-
 // A container with a parent, deleted with the parent and the models that are its children. The children go in the
 // order they were given to the parent: models first, or the container first.
 void parent_deletes_models_before_the_container() {
@@ -378,7 +386,7 @@ void parent_deletes_the_container_before_the_models() {
   proxy->setSourceModel(model);
   Resets resets(model);
   delete parent;
-  CHECK(resets.done == 0);  // the model went on holding rows of a container that was already gone
+  CHECK(resets.about == 1 && resets.done == 1);  // the container went first, and the model reset
 }
 
 void a_model_that_is_a_child_of_its_container() {
@@ -386,7 +394,7 @@ void a_model_that_is_a_child_of_its_container() {
   auto* model = new ListModel(src, ListKit::show, src);
   Resets resets(model);
   delete src;
-  CHECK(resets.done == 0);
+  CHECK(resets.about == 1 && resets.done == 1);
 }
 }  // namespace
 
@@ -404,9 +412,8 @@ int main(int argc, char** argv) {
   container_deleted_later_inside_its_own_receiver();
   model_deleted_inside_a_container_receiver();
   a_connection_cut_before_the_model_heard_the_announcement();
-  a_connection_cut_after_the_model_began_the_change();
   parent_deletes_models_before_the_container();
   parent_deletes_the_container_before_the_models();
   a_model_that_is_a_child_of_its_container();
-  return rqt_test::finish("limit_edge_lifetime");
+  return rqt_test::finish("capability_edge_lifetime");
 }

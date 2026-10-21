@@ -16,6 +16,12 @@
 // The model counts its own rows, because while a batch is being announced the container already holds the final
 // content and the two counts differ.
 //
+// The model holds its container by QPointer. When the container is destroyed first the model resets to empty from the
+// container's destroyed signal, so every call (rowCount, data, index, setData, flags, headerData) stays safe, and a
+// model that is destroyed first needs nothing. A model made while the container is announcing a change, between the
+// "about" and the "done" signal, did not hear the "about" one: at the "done" signal it resets to the container's
+// content instead of ending a change it never began.
+//
 // A model and its container live in one thread, so the connections are direct; a model made for a container of
 // another thread asserts in a debug build.
 #pragma once
@@ -27,6 +33,7 @@
 
 #include <QtCore/QAbstractListModel>
 #include <QtCore/QAbstractTableModel>
+#include <QtCore/QPointer>
 #include <QtCore/QString>
 #include <QtCore/QThread>
 
@@ -83,7 +90,7 @@ class ContainerModelBase : public Model {
   }
 
   bool setData(const QModelIndex& index, const QVariant& value, int role = Qt::EditRole) override {
-    if (!index.isValid() || index.row() >= rowCount() || role != Qt::EditRole || !editable(index.column())) return false;
+    if (!m_source || !index.isValid() || index.row() >= rowCount() || role != Qt::EditRole || !editable(index.column())) return false;
     const Key key = keyAt(index.row());
     const std::optional<Value> edited = editorOf(index.column())(m_source->value(key), value);
     return edited && m_source->replace(key, *edited);
@@ -103,22 +110,55 @@ class ContainerModelBase : public Model {
   virtual const Editor& editorOf(int column) const = 0;
 
   Key keyAt(qsizetype row) const { return m_index.keyAt(row); }
-  Source* source() const { return m_source; }
+  Source* source() const { return m_source.data(); }
 
   // The value of the entry in a row, or nullptr for a row whose entry the container has already dropped, which a
   // row inside a batch removal still is while its begin and end are being announced.
-  const Value* valueAt(const Key& key) const { return m_source->contains(key) ? &m_source->value(key) : nullptr; }
+  const Value* valueAt(const Key& key) const { return m_source && m_source->contains(key) ? &m_source->value(key) : nullptr; }
 
  private:
   qsizetype rowOf(const Key& key) const { return m_index.rowOf(key); }
   qsizetype rowToInsert(const Key& key) const { return m_index.rowToInsert(key); }
 
+  // Takes the container's content in one reset: for a container that is gone, the empty content.
+  void resync() {
+    this->beginResetModel();
+    takeContent();
+    this->endResetModel();
+  }
+
+  void takeContent() {
+    m_open = false;
+    if (m_source) {
+      m_index.assign(Traits::keys(m_source->items()));
+      m_rowCount = static_cast<int>(m_source->size());
+    } else {
+      m_index.clear();
+      m_rowCount = 0;
+    }
+  }
+
+  // The end of a change whose beginning this model heard. A model made between the two signals did not: it follows
+  // the container with a reset, and the caller has nothing left to do.
+  bool heardTheBeginning() {
+    if (m_open) {
+      m_open = false;
+      return true;
+    }
+    resync();
+    return false;
+  }
+
   void connectSource() {
+    QObject::connect(m_source, &QObject::destroyed, this, [this] { resync(); });
+
     QObject::connect(m_source, &Source::entryAboutToBeAdded, this, [this](const Key& key) {
       m_pendingRow = static_cast<int>(rowToInsert(key));
+      m_open = true;
       this->beginInsertRows(QModelIndex(), m_pendingRow, m_pendingRow);
     });
     QObject::connect(m_source, &Source::entryAdded, this, [this](const Key& key) {
+      if (!heardTheBeginning()) return;
       m_index.insert(key, m_pendingRow);
       ++m_rowCount;
       this->endInsertRows();
@@ -126,9 +166,11 @@ class ContainerModelBase : public Model {
 
     QObject::connect(m_source, &Source::entryAboutToBeRemoved, this, [this](const Key& key) {
       m_pendingRow = static_cast<int>(rowOf(key));
+      m_open = true;
       this->beginRemoveRows(QModelIndex(), m_pendingRow, m_pendingRow);
     });
     QObject::connect(m_source, &Source::entryRemoved, this, [this](const Key& key) {
+      if (!heardTheBeginning()) return;
       m_index.erase(key, m_pendingRow);
       --m_rowCount;
       this->endRemoveRows();
@@ -145,25 +187,32 @@ class ContainerModelBase : public Model {
       QObject::connect(m_source, &Source::entryAboutToBeMoved, this, [this](const Key& from, const Key& to) {
         const int source = static_cast<int>(from);
         const int target = static_cast<int>(to);
+        m_open = true;
         // beginMoveRows takes the row the block is put before, so a move down counts one further.
         this->beginMoveRows(QModelIndex(), source, source, QModelIndex(), target > source ? target + 1 : target);
       });
-      QObject::connect(m_source, &Source::entryMoved, this, [this](const Key&, const Key&) { this->endMoveRows(); });
+      QObject::connect(m_source, &Source::entryMoved, this, [this](const Key&, const Key&) {
+        if (heardTheBeginning()) this->endMoveRows();
+      });
     }
 
     // A run of a list is contiguous, so one begin and one end serve it however long it is.
     if constexpr (Traits::order == Order::indexed) {
       QObject::connect(m_source, &Source::rangeAboutToBeAdded, this, [this](const Key& first, const Key& last) {
+        m_open = true;
         this->beginInsertRows(QModelIndex(), static_cast<int>(first), static_cast<int>(last));
       });
       QObject::connect(m_source, &Source::rangeAdded, this, [this](const Key& first, const Key& last) {
+        if (!heardTheBeginning()) return;
         m_rowCount += static_cast<int>(last - first + 1);
         this->endInsertRows();
       });
       QObject::connect(m_source, &Source::rangeAboutToBeRemoved, this, [this](const Key& first, const Key& last) {
+        m_open = true;
         this->beginRemoveRows(QModelIndex(), static_cast<int>(first), static_cast<int>(last));
       });
       QObject::connect(m_source, &Source::rangeRemoved, this, [this](const Key& first, const Key& last) {
+        if (!heardTheBeginning()) return;
         m_rowCount -= static_cast<int>(last - first + 1);
         this->endRemoveRows();
       });
@@ -177,18 +226,25 @@ class ContainerModelBase : public Model {
       QObject::connect(m_source, &Source::entriesRemoved, this, [this](const QList<Key>& keys) { removeRuns(keys); });
     }
 
-    QObject::connect(m_source, &Source::aboutToBeCleared, this, [this] { this->beginResetModel(); });
+    QObject::connect(m_source, &Source::aboutToBeCleared, this, [this] {
+      m_open = true;
+      this->beginResetModel();
+    });
     QObject::connect(m_source, &Source::cleared, this, [this] {
+      if (!heardTheBeginning()) return;
       m_index.clear();
       m_rowCount = 0;
       this->endResetModel();
     });
 
     // A reset of the container replaces everything between one pair of signals, and the model follows with one reset.
-    QObject::connect(m_source, &Source::aboutToBeReset, this, [this] { this->beginResetModel(); });
+    QObject::connect(m_source, &Source::aboutToBeReset, this, [this] {
+      m_open = true;
+      this->beginResetModel();
+    });
     QObject::connect(m_source, &Source::resetCompleted, this, [this] {
-      m_index.assign(Traits::keys(m_source->items()));
-      m_rowCount = static_cast<int>(m_source->size());
+      if (!heardTheBeginning()) return;
+      takeContent();
       this->endResetModel();
     });
   }
@@ -230,10 +286,11 @@ class ContainerModelBase : public Model {
     }
   }
 
-  Source* m_source;
+  QPointer<Source> m_source;
   typename RowIndexFor<Traits::order, Key>::type m_index;
   int m_pendingRow = -1;
   int m_rowCount = 0;
+  bool m_open = false;  // this model heard the "about" signal of a change and has not seen its "done" signal
 };
 
 template <class C>

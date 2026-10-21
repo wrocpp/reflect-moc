@@ -129,7 +129,7 @@ void a_queued_signal_outlives_its_container() {
   thread.start();
   QMetaObject::invokeMethod(&anchor, [] {}, Qt::BlockingQueuedConnection);
   CHECK(seen == QList<int>({1, 2}));
-  CHECK(model->rowCount() == 2);  // the model heard both, with the container gone
+  CHECK(model->rowCount() == 0);  // the container's death reset the model: it keeps none of the rows it heard of
   QMetaObject::invokeMethod(&anchor, [&] {
     model->moveToThread(QCoreApplication::instance()->thread());
     anchor.moveToThread(QCoreApplication::instance()->thread());
