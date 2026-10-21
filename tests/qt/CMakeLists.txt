@@ -205,3 +205,6 @@ add_test(NAME capability_no_moc_in_build
           "-DOBJECTS=$<TARGET_OBJECTS:rqt_no_moc_probe>"
           -P ${CMAKE_CURRENT_SOURCE_DIR}/check_no_moc.cmake)
 set_tests_properties(capability_no_moc_in_build PROPERTIES LABELS qt RESOURCE_LOCK rqt_build_tree)
+
+# Binding B of the regenerated observable-container spec (examples/qt/spec_regen): typed signals, no moc.
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../examples/qt/spec_regen/binding_b spec_regen_binding_b)

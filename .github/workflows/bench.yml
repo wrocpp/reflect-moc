@@ -1,7 +1,7 @@
 name: bench
 
-# Manual only. Runs tests/qt/measure/observable_bench/run.sh on the x86_64 runner: the QVariant split against
-# the typed template. Shared runners are noisy, so the output is a record to read next to the aarch64 numbers
+# Manual only. Runs a script under tests/qt/measure on the x86_64 runner (the QVariant split against the typed
+# template by default, spec_bench/run.sh for the two bindings of the regenerated spec). Shared runners are noisy, so the output is a record to read next to the aarch64 numbers
 # in docs/measurements.md, not a gate.
 on:
   workflow_dispatch:
@@ -9,6 +9,9 @@ on:
       runs:
         description: Repetitions of every timing
         default: '7'
+      script:
+        description: Benchmark script under tests/qt/measure
+        default: observable_bench/run.sh
 
 permissions:
   contents: read
@@ -31,11 +34,14 @@ jobs:
           tags: ${{ env.IMAGE }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-      - name: QVariant split against typed signals
+      - name: Benchmark
+        env:
+          SCRIPT: ${{ inputs.script }}
         run: |
+          case "$SCRIPT" in *..*|/*) echo "bad script path"; exit 1;; esac
           docker run --rm -e RQT_RUNS=${{ inputs.runs }} -v "$PWD":/src:ro -w /src "$IMAGE" \
-            bash tests/qt/measure/observable_bench/run.sh | tee bench.txt
+            bash "tests/qt/measure/$SCRIPT" | tee bench.txt
       - uses: actions/upload-artifact@v4
         with:
-          name: observable-bench
+          name: bench
           path: bench.txt
