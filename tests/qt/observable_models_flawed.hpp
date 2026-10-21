@@ -56,7 +56,7 @@ class FlawedListModel : public QAbstractListModel {
       beginRemoveRows(QModelIndex(), row, row);
     });
     connect(source, &Source::entryRemoved, this, [this](const qsizetype&) { endRemoveRows(); });
-    connect(source, &Source::entryChanged, this, [this](const qsizetype& key) {
+    connect(source, &Source::entryChanged, this, [this](const qsizetype& key, const QList<int>&) {
       if (m_flaw == Flaw::silent_replace) return;
       emit dataChanged(index(static_cast<int>(key)), index(static_cast<int>(key)));
     });

@@ -33,8 +33,15 @@ class Log {
     connect(&Source::entryAdded, keyed("added"));
     connect(&Source::entryAboutToBeRemoved, keyed("aboutToBeRemoved"));
     connect(&Source::entryRemoved, keyed("removed"));
-    connect(&Source::entryAboutToBeChanged, keyed("aboutToBeChanged"));
-    connect(&Source::entryChanged, keyed("changed"));
+    const auto changed = [this](const char* name) {
+      return [this, name](const Key& key, const QList<int>& roles) {
+        QStringList names;
+        for (const int role : roles) names.append(QString::number(role));
+        note(name, QString::number(static_cast<long long>(key)) + " roles=[" + names.join(',') + "]");
+      };
+    };
+    connect(&Source::entryAboutToBeChanged, changed("aboutToBeChanged"));
+    connect(&Source::entryChanged, changed("changed"));
     const auto moved = [this](const char* name) {
       return [this, name](const Key& from, const Key& to) {
         note(name, QString::number(static_cast<long long>(from)) + ">" + QString::number(static_cast<long long>(to)));
@@ -83,7 +90,7 @@ int main(int argc, char** argv) {
   log.take();
 
   CHECK(list.replace(0, Sample{kReplacement}));
-  CHECK(log.take() == QStringList({"aboutToBeChanged 0 size=3 first=10", "changed 0 size=3 first=99"}));
+  CHECK(log.take() == QStringList({"aboutToBeChanged 0 roles=[] size=3 first=10", "changed 0 roles=[] size=3 first=99"}));
 
   CHECK(list.move(0, 2));
   CHECK(log.take() == QStringList({"aboutToBeMoved 0>2 size=3 first=99", "moved 0>2 size=3 first=20"}));

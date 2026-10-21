@@ -6,6 +6,11 @@
 // A mutator that is asked for something invalid (an index out of range, a key already present, a
 // replace of a missing key, a move in a container that has no order) returns false, changes nothing
 // and emits nothing.
+//
+// A gesture on many entries is one event. insertMany, removeMany and takeMany (a map, hash or set) announce the
+// list of keys once, and resetWith replaces the whole content between one pair of signals, so a listener never
+// sees the empty state that clear followed by inserts would show. The data pair carries the roles that changed,
+// and an empty list means all of them.
 #pragma once
 
 #include "container_traits.hpp"
@@ -14,8 +19,10 @@
 
 #include <QtCore/QList>
 #include <QtCore/QObject>
+#include <QtCore/QSet>
 #include <QtCore/QThread>
 
+#include <set>
 #include <type_traits>
 #include <utility>
 
@@ -78,9 +85,28 @@ class ObservableContainer : public QObject {
     } else {
       assertOwnThread();
       if (!Traits::contains(m_items, key)) return false;
-      emit entryAboutToBeChanged(key);
+      emit entryAboutToBeChanged(key, {});
       Traits::assign(m_items, key, std::move(value));
-      emit entryChanged(key);
+      emit entryChanged(key, {});
+      return true;
+    }
+  }
+
+  // Changes the value of an entry in place: `edit` takes the value by reference. The change is announced with the
+  // roles it touches, and an empty list means every role. `edit` runs on a copy before anything is announced, so
+  // a throw from it changes nothing and emits nothing, and a listener at the "about" signal sees the old value.
+  template <class Edit>
+  bool editValue(const Key& key, Edit&& edit, QList<int> roles = {}) {
+    if constexpr (!Traits::assignable) {
+      return false;
+    } else {
+      assertOwnThread();
+      if (!Traits::contains(m_items, key)) return false;
+      Value edited = Traits::value(m_items, key);
+      std::forward<Edit>(edit)(edited);
+      emit entryAboutToBeChanged(key, roles);
+      Traits::assign(m_items, key, std::move(edited));
+      emit entryChanged(key, roles);
       return true;
     }
   }
@@ -130,6 +156,66 @@ class ObservableContainer : public QObject {
     }
   }
 
+  // Adds many entries at once to a map, hash or set: one announcement for the whole list of keys. Keys the
+  // container already holds are skipped. Returns how many were added, and announces nothing when that is none.
+  // A list has insertRange, and a multi container has no key to name an entry by before it exists: both return 0.
+  qsizetype insertMany(const C& entries) {
+    if constexpr (!batchable) {
+      return 0;
+    } else {
+      assertOwnThread();
+      QList<Key> keys;
+      for (const Key& key : Traits::keys(entries))
+        if (Traits::can_insert(m_items, key)) keys.append(key);
+      if (keys.isEmpty()) return 0;
+      emit entriesAboutToBeAdded(keys);
+      for (const Key& key : keys) Traits::insert(m_items, key, Traits::value(entries, key));
+      emit entriesAdded(keys);
+      return keys.size();
+    }
+  }
+
+  // Removes many entries at once: absent keys and repeated keys are ignored, the keys that are left are announced
+  // once in the order given. Returns how many were removed, and announces nothing when that is none.
+  qsizetype removeMany(const QList<Key>& keys) {
+    if constexpr (!batchable) {
+      return 0;
+    } else {
+      assertOwnThread();
+      const QList<Key> present = presentKeys(keys);
+      if (present.isEmpty()) return 0;
+      emit entriesAboutToBeRemoved(present);
+      for (const Key& key : present) Traits::erase(m_items, key);
+      emit entriesRemoved(present);
+      return present.size();
+    }
+  }
+
+  // Like removeMany, and returns the removed entries as a container, which is empty when nothing was removed.
+  // `to.insertMany(from.takeMany(keys))` moves entries between two containers, one announcement on each side.
+  C takeMany(const QList<Key>& keys) {
+    C taken;
+    if constexpr (batchable) {
+      assertOwnThread();
+      const QList<Key> present = presentKeys(keys);
+      if (present.isEmpty()) return taken;
+      for (const Key& key : present) Traits::insert(taken, key, Traits::value(m_items, key));
+      emit entriesAboutToBeRemoved(present);
+      for (const Key& key : present) Traits::erase(m_items, key);
+      emit entriesRemoved(present);
+    }
+    return taken;
+  }
+
+  // Replaces the whole content in one step, between one pair of signals. It always announces, even when the old
+  // and the new content are both empty, and no listener ever sees a container that is empty in between.
+  void resetWith(C content) {
+    assertOwnThread();
+    emit aboutToBeReset();
+    m_items = std::move(content);
+    emit resetCompleted();
+  }
+
   // Removes every entry. An empty container announces nothing.
   bool clear() {
     assertOwnThread();
@@ -145,18 +231,46 @@ class ObservableContainer : public QObject {
   rqt::signal<void(const Key&)> entryAdded;
   rqt::signal<void(const Key&)> entryAboutToBeRemoved;
   rqt::signal<void(const Key&)> entryRemoved;
-  rqt::signal<void(const Key&)> entryAboutToBeChanged;
-  rqt::signal<void(const Key&)> entryChanged;
+  rqt::signal<void(const Key&, const QList<int>&)> entryAboutToBeChanged;  // roles that change, empty: all
+  rqt::signal<void(const Key&, const QList<int>&)> entryChanged;
   rqt::signal<void(const Key&, const Key&)> entryAboutToBeMoved;
   rqt::signal<void(const Key&, const Key&)> entryMoved;
   rqt::signal<void(const Key&, const Key&)> rangeAboutToBeAdded;  // first and last key, a list only
   rqt::signal<void(const Key&, const Key&)> rangeAdded;
   rqt::signal<void(const Key&, const Key&)> rangeAboutToBeRemoved;
   rqt::signal<void(const Key&, const Key&)> rangeRemoved;
+  rqt::signal<void(const QList<Key>&)> entriesAboutToBeAdded;  // a map, hash or set
+  rqt::signal<void(const QList<Key>&)> entriesAdded;
+  rqt::signal<void(const QList<Key>&)> entriesAboutToBeRemoved;
+  rqt::signal<void(const QList<Key>&)> entriesRemoved;
   rqt::signal<void()> aboutToBeCleared;
   rqt::signal<void()> cleared;
+  rqt::signal<void()> aboutToBeReset;
+  rqt::signal<void()> resetCompleted;
 
  private:
+  // Batches name an entry by a key it does not hold yet, which a list (it has ranges) and a multi container (its
+  // keys are numbered from the newest) cannot do.
+  static constexpr bool batchable = Traits::order == Order::sorted || Traits::order == Order::unordered;
+
+  // The keys the container holds, each once, in the order given.
+  QList<Key> presentKeys(const QList<Key>& keys) const {
+    QList<Key> out;
+    if constexpr (Traits::order == Order::sorted) {
+      std::set<Key> seen;  // a map orders its keys, so they compare, but they need not hash
+      for (const Key& key : keys)
+        if (Traits::contains(m_items, key) && seen.insert(key).second) out.append(key);
+    } else {
+      QSet<Key> seen;
+      for (const Key& key : keys)
+        if (Traits::contains(m_items, key) && !seen.contains(key)) {
+          seen.insert(key);
+          out.append(key);
+        }
+    }
+    return out;
+  }
+
   C m_items;
 };
 
