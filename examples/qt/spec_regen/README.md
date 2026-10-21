@@ -29,8 +29,8 @@ Both trees were rebuilt by hand from a read-only mount before they were committe
 twin and break pairs included). Binding A also builds with MSVC 19.44 and Qt 6.8.3 at `/W4 /permissive- /Zc:__cplusplus`
 with 0 warnings and the same 17 of 17 (CI job `spec-binding-a-msvc`).
 
-Not done: Clang for either binding, binding B on MSVC (reflect-moc needs GCC), queued connections and threads,
-QML, key types other than `int`, `quint32`, `qsizetype` and `QString`. The generated code is pinned by the
+Not done: Clang for binding B (it needs reflection, which only GCC 16 has here), binding B on MSVC, queued
+connections and threads, QML, key types other than `int`, `quint32`, `qsizetype` and `QString`. The generated code is pinned by the
 acceptance tests and is not held to the CRAP and mutation rules of the hand-written examples; the binding B agent
 ran five hand-made mutants and one survived, which it killed with a new test (`at_3_6_replaceWritesBetweenTheAboutAndTheTwin`).
 
@@ -71,10 +71,12 @@ Binding B added: no constructors for the example models (10.7, so they start emp
 7. 16: the Qt API list is smaller than the spec needs (`QModelIndex`, `Qt::ItemFlags`, `Qt::Orientation`, `CheckIndexOption`, `QObject::disconnect`, `QMetaObject::Connection`, and in the tests `QVariant::toString`, `toInt`, `toDouble`, `QString::number`, `QChar`).
 8. Binding B only: 6.1 `VariantKey` and AT-1.8 test a requirement 4.2 drops, 15.2 takes `const ContainerSignals *`, 14 lists an AUTOMOC `obs_kit`, and the spec says C++20 throughout while reflect-moc needs C++26. A short table of the binding B readings of section 15 would save the translation.
 
-## Binding A on MSVC: one thing to watch
+## Binding A on MSVC and Clang: one thing to watch
 
 In `Container<QList<T>>`, `insert(qsizetype, Value)` and `insert(const Key &, Value)` have the same signature and
-differ only in their `requires` clause. GCC 16.2 and MSVC 19.44 both accept it. Clang was not tried.
+differ only in their `requires` clause. GCC 16.2, MSVC 19.44 and Clang 19.1.7 all accept it. The Clang run was by
+hand, in the image with Debian's `clang` package against Qt 6.10.3 (`-DCMAKE_CXX_COMPILER=clang++`): 17 of 17, no
+warning at `-Wall -Wextra -Wpedantic`, and the compile-fail pairs match their expected text. There is no CI job for it.
 
 ## Binding B and reflect-moc
 
