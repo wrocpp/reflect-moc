@@ -58,3 +58,27 @@ jobs:
       - name: moc trap
         run: |
           docker run --rm -v "$PWD":/src:ro -w /src "$IMAGE" sh examples/qt/check_moc_trapped.sh
+
+  # Binding A of the regenerated observable-container spec is plain C++20 with
+  # classic moc, so it builds with MSVC, the toolchain its author uses. The
+  # rest of this repository needs GCC 16 and stays out of this job.
+  spec-binding-a-msvc:
+    runs-on: windows-2022
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: jurplel/install-qt-action@v4
+        with:
+          version: 6.8.3
+          arch: win64_msvc2022_64
+          cache: true
+
+      - name: Configure (/W4 /permissive- /Zc:__cplusplus)
+        run: cmake -S examples/qt/spec_regen/binding_a -B build-a -G "Visual Studio 17 2022" -A x64
+
+      - name: Build
+        run: cmake --build build-a --config Release
+
+      - name: Acceptance tests and the compile-fail pairs
+        run: ctest --test-dir build-a -C Release --output-on-failure
