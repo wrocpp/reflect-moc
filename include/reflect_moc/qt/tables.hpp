@@ -46,11 +46,17 @@ constexpr std::string normalize_type_name(std::string name) {
   struct Spelling {
     std::string_view written, short_name;
   };
-  // Longest first: "unsigned long long" must be read before "long long" and "unsigned long".
-  constexpr Spelling spellings[] = {{"unsigned long long", "qulonglong"}, {"unsigned long", "ulong"},
-                                    {"unsigned short", "ushort"},         {"unsigned char", "uchar"},
-                                    {"unsigned int", "uint"},             {"long long", "qlonglong"},
-                                    {"unsigned", "uint"}};
+  // Longest first, so that "long long unsigned int" is read before "long long" and "unsigned int". GCC writes
+  // "long unsigned int" and "short unsigned int", the order Qt's normalizer also accepts, so both are listed.
+  constexpr Spelling spellings[] = {{"long long unsigned int", "qulonglong"}, {"unsigned long long int", "qulonglong"},
+                                    {"long long unsigned", "qulonglong"},     {"unsigned long long", "qulonglong"},
+                                    {"long long int", "qlonglong"},           {"long long", "qlonglong"},
+                                    {"long unsigned int", "ulong"},           {"unsigned long int", "ulong"},
+                                    {"long unsigned", "ulong"},               {"unsigned long", "ulong"},
+                                    {"short unsigned int", "ushort"},         {"unsigned short int", "ushort"},
+                                    {"unsigned short", "ushort"},             {"short int", "short"},
+                                    {"long int", "long"},                     {"unsigned char", "uchar"},
+                                    {"unsigned int", "uint"},                 {"unsigned", "uint"}};
   const auto word_char = [](char c) { return c == '_' || (c >= '0' && c <= '9') || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z'); };
   for (const Spelling& s : spellings) {
     for (std::size_t at = name.find(s.written); at != std::string::npos; at = name.find(s.written, at + s.short_name.size())) {
