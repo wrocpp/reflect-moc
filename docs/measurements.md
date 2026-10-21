@@ -273,9 +273,81 @@ Reading:
   and 189,760 against 149,088 on x86_64. Compile, one translation unit: 4.54 s typed against 3.06 s plus 1.32 s for
   moc on the Mac, 9.83 s against 6.61 s plus 3.04 s on x86_64, so the total is within 4 percent either way.
 
+## The regenerated spec in two bindings: moc with `QVariant` keys against typed signals
+
+`tests/qt/measure/spec_bench/run.sh` builds one source against binding A and binding B of
+[`examples/qt/spec_regen`](../examples/qt/spec_regen/README.md) through the same `obs::` API. **The two trees were written
+by two different agents, so unlike the controlled twin above they do not share their model code.** A difference in a
+batch or a reset row can come from the model code as well as from the signal transport; only the per-entry rows are
+close to the earlier controlled comparison. The gate runs first: both bindings pass their 17 acceptance entries, and a
+copy of each whose list model removes runs in ascending order is caught by `tst_list_model` (it crashes, because the
+Qt bookkeeping is left unbalanced).
+
+Seven runs, alternating the two binaries, median. ns per change for fill, replace and drain; ns per call for the
+others (100 keys per batch, a 100-cell `setValues`). The x86_64 run is the manual `bench` workflow on a GitHub runner
+(load 1.05, spread mostly under 5 percent). The Mac run is aarch64 in Docker on a **busy** machine (load 1.8 at the
+start, 6.3 at the end), so read differences under about 10 percent there as noise.
+
+| container | entries | operation | x86_64 A | x86_64 B | B / A | Mac A | Mac B | B / A |
+|---|---|---|---|---|---|---|---|---|
+| Matrix100x100 | 100 x 100 | setValues-block-100-cells | 9,681 | 9,983 | 1.03 | 7,872 | 7,453 | 0.95 |
+| Matrix100x100 | 100 x 100 | setValues-diagonal-100-cells | 22,884 | 20,939 | 0.92 | 18,625 | 17,893 | 0.96 |
+| QHash | 1,000 | drain | 11,226 | 11,654 | 1.04 | 10,436 | 12,253 | 1.17 |
+| QHash | 1,000 | fill | 222 | 184 | 0.83 | 204 | 170 | 0.83 |
+| QHash | 1,000 | insertMany-contiguous | 14,286 | 6,042 | 0.42 | 8,288 | 5,712 | 0.69 |
+| QHash | 1,000 | insertMany-scattered | 23,229 | 14,993 | 0.65 | 22,192 | 15,700 | 0.71 |
+| QHash | 1,000 | removeMany-contiguous | 44,969 | 40,053 | 0.89 | 35,560 | 36,231 | 1.02 |
+| QHash | 1,000 | removeMany-scattered | 54,977 | 47,602 | 0.87 | 44,023 | 43,544 | 0.99 |
+| QHash | 1,000 | replace | 152 | 122 | 0.80 | 153 | 119 | 0.78 |
+| QHash | 10,000 | drain | 193,274 | 197,616 | 1.02 | 189,426 | 187,944 | 0.99 |
+| QHash | 10,000 | fill | 208 | 175 | 0.84 | 187 | 178 | 0.95 |
+| QHash | 10,000 | insertMany-contiguous | 26,058 | 15,335 | 0.59 | 21,811 | 16,297 | 0.75 |
+| QHash | 10,000 | insertMany-scattered | 60,315 | 51,121 | 0.85 | 78,655 | 73,628 | 0.94 |
+| QHash | 10,000 | removeMany-contiguous | 454,473 | 455,011 | 1.00 | 420,204 | 420,123 | 1.00 |
+| QHash | 10,000 | removeMany-scattered | 487,240 | 488,066 | 1.00 | 457,063 | 458,043 | 1.00 |
+| QHash | 10,000 | replace | 170 | 131 | 0.77 | 157 | 136 | 0.87 |
+| QList | 1,000 | drain | 180 | 141 | 0.78 | 188 | 152 | 0.81 |
+| QList | 1,000 | fill | 128 | 100 | 0.78 | 136 | 98 | 0.72 |
+| QList | 1,000 | replace | 91 | 52 | 0.58 | 102 | 63 | 0.61 |
+| QList | 10,000 | drain | 763 | 731 | 0.96 | 1,072 | 724 | 0.68 |
+| QList | 10,000 | fill | 132 | 103 | 0.78 | 142 | 96 | 0.67 |
+| QList | 10,000 | replace | 91 | 53 | 0.58 | 111 | 61 | 0.56 |
+| QMap | 1,000 | insertMany-contiguous | 22,518 | 14,009 | 0.62 | 15,842 | 12,321 | 0.78 |
+| QMap | 1,000 | insertMany-scattered | 35,963 | 27,214 | 0.76 | 31,618 | 26,872 | 0.85 |
+| QMap | 1,000 | removeMany-contiguous | 53,526 | 48,896 | 0.91 | 44,581 | 42,797 | 0.96 |
+| QMap | 1,000 | removeMany-scattered | 63,553 | 57,603 | 0.91 | 73,929 | 56,600 | 0.77 |
+| QMap | 1,000 | resetWith | 20,679 | 19,302 | 0.93 | 22,079 | 27,157 | 1.23 |
+| QMap | 10,000 | insertMany-contiguous | 34,051 | 22,968 | 0.67 | 26,598 | 20,275 | 0.76 |
+| QMap | 10,000 | insertMany-scattered | 99,395 | 90,302 | 0.91 | 112,470 | 112,353 | 1.00 |
+| QMap | 10,000 | removeMany-contiguous | 467,296 | 463,527 | 0.99 | 417,612 | 412,918 | 0.99 |
+| QMap | 10,000 | removeMany-scattered | 508,700 | 508,080 | 1.00 | 481,380 | 488,517 | 1.01 |
+| QMap | 10,000 | resetWith | 128,968 | 139,660 | 1.08 | 104,403 | 134,501 | 1.29 |
+
+Reading, from x86_64 unless said:
+
+- Per entry, binding B is faster: fill by 16 to 22 percent, replace by 20 to 42 percent, drain between 22 percent faster
+  and 4 percent slower (the hash drain at 1,000 and 10,000 entries is within 4 percent).
+- `insertMany` of 100 keys is 9 to 58 percent faster in binding B. I did not isolate how much of that is the boxing of
+  100 keys into `QVariant` and how much is different model code.
+- `removeMany` is equal at 10,000 entries (0.99 to 1.00) and 9 to 13 percent faster in B at 1,000. `resetWith` of a map
+  is 7 percent faster in B at 1,000 entries and 8 percent slower at 10,000. On the busy Mac it was 23 and 29 percent
+  slower; that did not repeat on x86_64, and I did not look for the cause.
+- The matrix `setValues` rows are equal within 8 percent.
+- **A finding about the spec, not the bindings.** Section 8.1 asks for a lazy key-to-row map that every change marks
+  stale and the next lookup rebuilds. A single removal after a change therefore costs a rebuild: 11 microseconds per
+  removal at 1,000 hash entries and 193 microseconds at 10,000, in both bindings, linear in the entry count. The row
+  index of `observable_models` costs 167 to 473 nanoseconds per change, at 100,000 hash entries and 10,000 map entries. The row order differs (the
+  spec sorts rows by key, `observable_models` keeps insertion order for a hash), so this is an indication, not a
+  like-for-like comparison.
+- Size: a container is 24 bytes in A and 144 in B; the matrix, with 26 signals, is 120 and 336 bytes. The benchmark
+  binary is 20 percent larger in B on x86_64 (325,512 against 272,288 bytes) and 9 percent on the Mac. Compile of one translation unit:
+  13.57 s for B against 7.97 s plus 4.86 s of moc for A on x86_64, so the totals are within 6 percent.
+- Not measured: a view on top, queued connections, MSVC, Clang.
+
 ## How to repeat
 
     docker run --rm -v "$PWD":/src -w /src reflect-moc/gcc16-qt610 bash tests/qt/measure/proof.sh
     docker run --rm -v "$PWD":/src:ro -w /src reflect-moc/gcc16-qt610 bash tests/qt/measure/observable_bench/run.sh
+    docker run --rm -v "$PWD":/src:ro -w /src reflect-moc/gcc16-qt610 bash tests/qt/measure/spec_bench/run.sh
 
 Not measured here: x86_64, other compilers, other Qt versions.
