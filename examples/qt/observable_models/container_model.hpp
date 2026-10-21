@@ -9,6 +9,13 @@
 // value with the column's editor and calls replace, so the change is announced like any other and a refused
 // edit changes nothing.
 //
+// A change to many entries reaches a view as the fewest begin and end pairs: a batch is split into runs of
+// consecutive rows, and each run is one pair, so a view keeps its selection and scroll position where a reset
+// would drop them. A reset of the container is a reset of the model, and nothing else.
+//
+// The model counts its own rows, because while a batch is being announced the container already holds the final
+// content and the two counts differ.
+//
 // A model and its container live in one thread, so the connections are direct; a model made for a container of
 // another thread asserts in a debug build.
 #pragma once
@@ -23,6 +30,7 @@
 #include <QtCore/QString>
 #include <QtCore/QThread>
 
+#include <algorithm>
 #include <functional>
 #include <optional>
 #include <utility>
@@ -59,7 +67,7 @@ class ContainerModelBase : public Model {
   static constexpr bool hasKeyRole = Traits::order == Order::sorted || Traits::order == Order::unordered;
 
   int rowCount(const QModelIndex& parent = QModelIndex()) const override {
-    return parent.isValid() ? 0 : static_cast<int>(m_source->size());
+    return parent.isValid() ? 0 : m_rowCount;
   }
 
   QHash<int, QByteArray> roleNames() const override {
@@ -86,6 +94,7 @@ class ContainerModelBase : public Model {
     Q_ASSERT_X(source->thread() == this->thread(), "observable::ContainerModelBase",
                "a model must live in the thread of its container (move data between threads, not the model)");
     m_index.assign(Traits::keys(source->items()));
+    m_rowCount = static_cast<int>(source->size());
     connectSource();
   }
 
@@ -95,6 +104,10 @@ class ContainerModelBase : public Model {
 
   Key keyAt(qsizetype row) const { return m_index.keyAt(row); }
   Source* source() const { return m_source; }
+
+  // The value of the entry in a row, or nullptr for a row whose entry the container has already dropped, which a
+  // row inside a batch removal still is while its begin and end are being announced.
+  const Value* valueAt(const Key& key) const { return m_source->contains(key) ? &m_source->value(key) : nullptr; }
 
  private:
   qsizetype rowOf(const Key& key) const { return m_index.rowOf(key); }
@@ -107,6 +120,7 @@ class ContainerModelBase : public Model {
     });
     QObject::connect(m_source, &Source::entryAdded, this, [this](const Key& key) {
       m_index.insert(key, m_pendingRow);
+      ++m_rowCount;
       this->endInsertRows();
     });
 
@@ -116,13 +130,15 @@ class ContainerModelBase : public Model {
     });
     QObject::connect(m_source, &Source::entryRemoved, this, [this](const Key& key) {
       m_index.erase(key, m_pendingRow);
+      --m_rowCount;
       this->endRemoveRows();
     });
 
-    QObject::connect(m_source, &Source::entryChanged, this, [this](const Key& key) {
+    // The roles go through as they came, and an empty list means every role, as it does for dataChanged.
+    QObject::connect(m_source, &Source::entryChanged, this, [this](const Key& key, const QList<int>& roles) {
       const int row = static_cast<int>(rowOf(key));
       const int lastColumn = static_cast<const QAbstractItemModel*>(this)->columnCount() - 1;
-      emit this->dataChanged(this->index(row, 0), this->index(row, lastColumn));
+      emit this->dataChanged(this->index(row, 0), this->index(row, lastColumn), roles);
     });
 
     if constexpr (Traits::movable) {
@@ -140,23 +156,84 @@ class ContainerModelBase : public Model {
       QObject::connect(m_source, &Source::rangeAboutToBeAdded, this, [this](const Key& first, const Key& last) {
         this->beginInsertRows(QModelIndex(), static_cast<int>(first), static_cast<int>(last));
       });
-      QObject::connect(m_source, &Source::rangeAdded, this, [this](const Key&, const Key&) { this->endInsertRows(); });
+      QObject::connect(m_source, &Source::rangeAdded, this, [this](const Key& first, const Key& last) {
+        m_rowCount += static_cast<int>(last - first + 1);
+        this->endInsertRows();
+      });
       QObject::connect(m_source, &Source::rangeAboutToBeRemoved, this, [this](const Key& first, const Key& last) {
         this->beginRemoveRows(QModelIndex(), static_cast<int>(first), static_cast<int>(last));
       });
-      QObject::connect(m_source, &Source::rangeRemoved, this, [this](const Key&, const Key&) { this->endRemoveRows(); });
+      QObject::connect(m_source, &Source::rangeRemoved, this, [this](const Key& first, const Key& last) {
+        m_rowCount -= static_cast<int>(last - first + 1);
+        this->endRemoveRows();
+      });
+    }
+
+    // A batch is announced once for the whole list of keys, and the model turns it into one begin and end pair per
+    // run of consecutive rows. Both directions are done at the "done" signal, when the container holds the final
+    // content and the model's own list of rows is still the old one.
+    if constexpr (Traits::order == Order::sorted || Traits::order == Order::unordered) {
+      QObject::connect(m_source, &Source::entriesAdded, this, [this](const QList<Key>& keys) { insertRuns(keys); });
+      QObject::connect(m_source, &Source::entriesRemoved, this, [this](const QList<Key>& keys) { removeRuns(keys); });
     }
 
     QObject::connect(m_source, &Source::aboutToBeCleared, this, [this] { this->beginResetModel(); });
     QObject::connect(m_source, &Source::cleared, this, [this] {
       m_index.clear();
+      m_rowCount = 0;
       this->endResetModel();
     });
+
+    // A reset of the container replaces everything between one pair of signals, and the model follows with one reset.
+    QObject::connect(m_source, &Source::aboutToBeReset, this, [this] { this->beginResetModel(); });
+    QObject::connect(m_source, &Source::resetCompleted, this, [this] {
+      m_index.assign(Traits::keys(m_source->items()));
+      m_rowCount = static_cast<int>(m_source->size());
+      this->endResetModel();
+    });
+  }
+
+  // The new keys come in the order their rows will have: ascending for a map, in the order they were added for a
+  // hash or set. A new key's final row is where it lands among the old rows plus the new keys before it, and a run
+  // of consecutive final rows is inserted with one begin and one end, the runs from the top so that each begin
+  // names a row that is already right.
+  void insertRuns(const QList<Key>& keys) {
+    std::vector<qsizetype> rows;
+    rows.reserve(static_cast<std::size_t>(keys.size()));
+    for (qsizetype i = 0; i < keys.size(); ++i) rows.push_back(rowToInsert(keys[i]) + i);
+    for (std::size_t from = 0; from < rows.size();) {
+      std::size_t to = from;
+      while (to + 1 < rows.size() && rows[to + 1] == rows[to] + 1) ++to;
+      this->beginInsertRows(QModelIndex(), static_cast<int>(rows[from]), static_cast<int>(rows[to]));
+      for (std::size_t k = from; k <= to; ++k) m_index.insert(keys[static_cast<qsizetype>(k)], rows[k]);
+      m_rowCount += static_cast<int>(to - from + 1);
+      this->endInsertRows();
+      from = to + 1;
+    }
+  }
+
+  // The rows of the removed keys, ascending and split into runs. The runs go from the bottom up, so the rows of
+  // the runs still to do do not move.
+  void removeRuns(const QList<Key>& keys) {
+    std::vector<std::pair<qsizetype, Key>> doomed;
+    doomed.reserve(static_cast<std::size_t>(keys.size()));
+    for (const Key& key : keys) doomed.emplace_back(rowOf(key), key);
+    std::sort(doomed.begin(), doomed.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
+    for (std::size_t to = doomed.size(); to > 0;) {
+      std::size_t from = to - 1;
+      while (from > 0 && doomed[from - 1].first + 1 == doomed[from].first) --from;
+      this->beginRemoveRows(QModelIndex(), static_cast<int>(doomed[from].first), static_cast<int>(doomed[to - 1].first));
+      for (std::size_t k = to; k-- > from;) m_index.erase(doomed[k].second, doomed[k].first);
+      m_rowCount -= static_cast<int>(to - from);
+      this->endRemoveRows();
+      to = from;
+    }
   }
 
   Source* m_source;
   typename RowIndexFor<Traits::order, Key>::type m_index;
   int m_pendingRow = -1;
+  int m_rowCount = 0;
 };
 
 template <class C>
@@ -183,7 +260,8 @@ class ContainerModel : public ContainerModelBase<C, QAbstractListModel> {
     if (!index.isValid() || index.row() >= this->rowCount()) return {};
     const Key key = this->keyAt(index.row());
     if (role == Base::KeyRole && Base::hasKeyRole) return QVariant::fromValue(key);
-    if (role == Qt::DisplayRole) return m_formatter(key, this->source()->value(key));
+    const Value* value = this->valueAt(key);
+    if (role == Qt::DisplayRole && value) return m_formatter(key, *value);
     return {};
   }
 
@@ -219,7 +297,8 @@ class ContainerTableModel : public ContainerModelBase<C, QAbstractTableModel> {
     if (!index.isValid() || index.row() >= this->rowCount() || index.column() >= columnCount()) return {};
     const Key key = this->keyAt(index.row());
     if (role == Base::KeyRole && Base::hasKeyRole) return QVariant::fromValue(key);
-    if (role == Qt::DisplayRole) return m_columns[static_cast<std::size_t>(index.column())].display(key, this->source()->value(key));
+    const Value* value = this->valueAt(key);
+    if (role == Qt::DisplayRole && value) return m_columns[static_cast<std::size_t>(index.column())].display(key, *value);
     return {};
   }
 

@@ -30,12 +30,18 @@ namespace observable_test {
 
 constexpr int kKeyDomain = 16;       // keys of a map, hash or set are drawn from [0, kKeyDomain), so they collide
 constexpr int kIndexSlack = 2;       // a list index is drawn from [-1, size + kIndexSlack), so some are invalid
-constexpr int kChangeKinds = 100;    // the weights below add up to this
-constexpr int kWeightInsert = 30;
-constexpr int kWeightRemove = 25;
-constexpr int kWeightReplace = 15;
-constexpr int kWeightMove = 14;
-constexpr int kWeightSelect = 14;    // the rest is clear
+constexpr int kChangeKinds = 100;    // the weights below add up to at most this
+constexpr int kWeightInsert = 20;
+constexpr int kWeightRemove = 16;
+constexpr int kWeightReplace = 8;
+constexpr int kWeightMove = 10;
+constexpr int kWeightSelect = 10;
+constexpr int kWeightEdit = 7;       // editValue, with a random set of roles
+constexpr int kWeightInsertMany = 9;
+constexpr int kWeightRemoveMany = 8;
+constexpr int kWeightReset = 4;      // resetWith; the rest is clear
+constexpr int kLongestBatch = 6;
+constexpr int kRoleKinds = 3;        // an edit names no role, one role, or two
 constexpr int kKeyRole = Qt::UserRole;  // ContainerModel::KeyRole
 
 struct Sample {
@@ -283,6 +289,13 @@ class Shadow {
     return true;
   }
 
+  // The whole content at once, with new ids: the rows in the order the model lists them. A reset drops every
+  // identity, so nothing tracked by id survives it.
+  void reset(const std::vector<std::pair<Key, int>>& rows) {
+    m_rows.clear();
+    for (const auto& [key, value] : rows) insert(key, value);
+  }
+
  private:
   void renumber() {
     if constexpr (Traits::order == observable::Order::indexed)
@@ -343,6 +356,30 @@ Report run_random(unsigned seed, int steps, MakeModel&& make_model, bool stop_at
   const auto expect = [&report](bool ok) {
     if (!ok) ++report.mismatches;
   };
+  constexpr bool batches = Traits::order == observable::Order::sorted || Traits::order == observable::Order::unordered;
+  // The QVariant twin of the benchmark and of rqt-migrate's fold test has none of editValue, insertMany,
+  // removeMany and resetWith, and the same driver runs against it: those changes are skipped for a container
+  // that lacks them.
+  constexpr bool rich = requires(Source& s, const C& c, const Key& k) {
+    s.resetWith(c);
+    s.insertMany(c);
+    s.removeMany(QList<Key>{});
+    s.editValue(k, [](typename Traits::Value&) {}, QList<int>{});
+  };
+  // Some entries to add at once or to replace everything with: the keys collide with the container's own.
+  const auto random_content = [&](int count) {
+    C content;
+    for (int i = 0; i < count; ++i) {
+      if constexpr (Traits::order == observable::Order::indexed) {
+        Traits::insert(content, Traits::size(content), Make<C>::value(nextValue + i, 0));
+      } else {
+        const Key k = static_cast<Key>(draw(0, kKeyDomain));
+        if (Traits::can_insert(content, k)) Traits::insert(content, k, Make<C>::value(nextValue + i, k));
+      }
+    }
+    nextValue += count;
+    return content;
+  };
 
   for (int step = 0; step < steps; ++step) {
     ++report.steps;
@@ -382,6 +419,68 @@ Report run_random(unsigned seed, int steps, MakeModel&& make_model, bool stop_at
         if (selectedIds.contains(id)) selectedIds.remove(id); else selectedIds.insert(id);
         tracked = model->index(row, 0);
         trackedId = id;
+      }
+    } else if (kind < kWeightInsert + kWeightRemove + kWeightReplace + kWeightMove + kWeightSelect + kWeightEdit) {
+      QList<int> roles;
+      for (int i = draw(0, kRoleKinds); i > 0; --i) roles.append(Qt::UserRole + draw(0, kRoleKinds));
+      if constexpr (rich) {
+        const bool expected = shadow.replace(key, value);
+        accepted = source.editValue(key, [&](typename Traits::Value& v) { v = Make<C>::value(value, key); }, roles);
+        expect(accepted == expected);
+      } else {
+        changed = false;
+      }
+    } else if (kind < kWeightInsert + kWeightRemove + kWeightReplace + kWeightMove + kWeightSelect + kWeightEdit +
+                          kWeightInsertMany) {
+      // A batch of a map, hash or set is one announcement; a list has insertRange instead, so it takes none.
+      if constexpr (rich) {
+        const C entries = random_content(draw(1, kLongestBatch + 1));
+        qsizetype expected = 0;
+        if constexpr (batches) {
+          for (const Key& k : Traits::keys(entries)) expected += shadow.insert(k, Make<C>::shown(k, Traits::value(entries, k)));
+        }
+        const qsizetype added = source.insertMany(entries);
+        expect(added == expected);
+        accepted = added > 0;
+      } else {
+        changed = false;
+      }
+    } else if (kind < kWeightInsert + kWeightRemove + kWeightReplace + kWeightMove + kWeightSelect + kWeightEdit +
+                          kWeightInsertMany + kWeightRemoveMany) {
+      if constexpr (rich) {
+        QList<Key> keys;
+        for (int i = draw(1, kLongestBatch + 1); i > 0; --i) keys.append(random_key());
+        qsizetype expected = 0;
+        if constexpr (batches) {
+          for (const Key& k : keys) {
+            const auto row = shadow.find(k);
+            const std::optional<int> id = row ? std::optional<int>(shadow.rows()[*row].id) : std::nullopt;
+            if (!shadow.remove(k)) continue;
+            ++expected;
+            if (id) selectedIds.remove(*id);
+            if (id && trackedId == id) trackedId.reset();
+          }
+        }
+        const qsizetype removed = source.removeMany(keys);
+        expect(removed == expected);
+        accepted = removed > 0;
+      } else {
+        changed = false;
+      }
+    } else if (kind < kWeightInsert + kWeightRemove + kWeightReplace + kWeightMove + kWeightSelect + kWeightEdit +
+                          kWeightInsertMany + kWeightRemoveMany + kWeightReset) {
+      // A reset replaces everything, even with the same content, and drops every identity.
+      if constexpr (rich) {
+        const C content = random_content(draw(0, kLongestBatch + 1));
+        std::vector<std::pair<Key, int>> rows;
+        for (const Key& k : Traits::keys(content)) rows.emplace_back(k, Make<C>::shown(k, Traits::value(content, k)));
+        shadow.reset(rows);
+        source.resetWith(content);
+        selectedIds.clear();
+        trackedId.reset();
+        accepted = true;
+      } else {
+        changed = false;
       }
     } else {
       const bool expected = shadow.clear();
