@@ -153,6 +153,15 @@ class InsertionOrderIndex {
     if (m_slots.needs_compaction()) compact();
   }
 
+  // A matrix labels its rows and columns by key: whether a key is there, and a key given another name in the same slot.
+  bool contains(const Key& key) const { return m_slot_of.contains(key); }
+  qsizetype size() const { return m_slots.live(); }
+  void rename(const Key& from, const Key& to) {
+    const qsizetype slot = m_slot_of.take(from);
+    m_slot_of.insert(to, slot);
+    m_keys[static_cast<std::size_t>(slot)] = to;
+  }
+
  private:
   void append(const Key& key) {
     m_slot_of.insert(key, m_slots.append());

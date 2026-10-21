@@ -73,7 +73,18 @@ set(limit_static_signal_static_member_function_MESSAGE
   "is unavailable for static member functions")
 set(limit_observable_container_throwing_move_MESSAGE
   "the value type must be nothrow move constructible and assignable")
+set(limit_observable_selection_builtin_role_MESSAGE "satisfaction of .*ValidRoleList")
+set(limit_observable_selection_user_role_MESSAGE "satisfaction of .*ValidRoleList")
+set(limit_observable_selection_duplicate_role_MESSAGE "satisfaction of .*ValidRoleList")
+set(limit_observable_selection_multi_selected_value_MESSAGE
+  "a Multi tracker holds multiple selection, so there is no single value to return")
+set(limit_observable_selection_host_without_signal_MESSAGE "satisfaction of .*SingleHost")
 set(RQT_QT_COMPILE_FAIL_TESTS
+  limit_observable_selection_builtin_role
+  limit_observable_selection_user_role
+  limit_observable_selection_duplicate_role
+  limit_observable_selection_multi_selected_value
+  limit_observable_selection_host_without_signal
   limit_observable_container_throwing_move
   limit_property_index_gap
   limit_rqt_connect_argument_mismatch
@@ -110,7 +121,9 @@ endif()
 if(TARGET Qt6::Test)
   foreach(name capability_observable_models_stress capability_observable_models_flaws_detected
                capability_observable_container_announcements capability_row_index
-               capability_observable_ranges_edits capability_observable_multi capability_observable_batches)
+               capability_observable_ranges_edits capability_observable_multi capability_observable_batches
+               capability_observable_matrix_signals capability_observable_matrix_model capability_observable_matrix_random
+               capability_observable_selection_tracker capability_observable_selection_models capability_observable_selection_random)
     add_executable(${name} ${name}.cpp)
     target_link_libraries(${name} PRIVATE ${RQT_QT_LIBS} Qt6::Test)
     set_target_properties(${name} PROPERTIES AUTOMOC OFF AUTOUIC OFF AUTORCC OFF)
