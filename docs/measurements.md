@@ -232,6 +232,47 @@ One compiler, one machine for the main run, and a benchmark with no view attache
 every difference here smaller in proportion). A real application with 19 files of hand-copied wiring would differ;
 this measures the transport of the key and the model's own cost, nothing else.
 
+## Final numbers: typed signals against the QVariant split, with the row index
+
+The tables above were measured before the row index, on a busy Mac, and two of their claims did not survive the
+quiet re-run below ("faster or equal in all ten rows", and a hash removal that was slower on x86_64, which was loop
+placement, see the section on it). This section is the current measurement: both designs use the same row index,
+GCC 16.2.0, Qt 6.10.3, `-O2`, 7 runs alternating the designs, median of ns per change at 1,000 entries.
+
+- aarch64: docker on a Mac, load 0.14 at the start (1.0 at the end).
+- x86_64: the manual `bench` workflow on a GitHub runner ([run 39549191481](https://github.com/wrocpp/reflect-moc/actions/runs/39549191481)), spread under 2 percent.
+
+| container, change | Mac QVariant | Mac typed | x86_64 QVariant | x86_64 typed |
+|---|---|---|---|---|
+| `QList` fill | 120.3 | 110.3 | 142.6 | 116.3 |
+| `QList` replace | 70.1 | 80.9 | 80.9 | 75.2 |
+| `QList` drain | 121.6 | 109.9 | 149.3 | 123.9 |
+| `QHash` fill | 150.6 | 137.4 | 194.5 | 176.9 |
+| `QHash` replace | 88.3 | 91.7 | 119.4 | 116.1 |
+| `QHash` drain | 181.4 | 176.4 | 246.6 | 227.6 |
+| `QMap` fill | 249.2 | 242.3 | 347.5 | 319.4 |
+| `QMap` replace | 182.2 | 189.9 | 237.2 | 231.1 |
+| `QMap` drain | 226.4 | 226.1 | 309.1 | 284.6 |
+
+Signal only, one connected slot, ns per emit (`quint32` key): QVariant 27.5, typed 20.4 on the Mac; QVariant 39.8,
+typed 25.6 on x86_64. A 32-byte key: QVariant 35.3 and 51.2, typed 20.6 and 25.9.
+
+Reading:
+
+- On x86_64 the typed version is faster in all nine rows, by 3 to 18 percent, and in every size from 1,000 to 100,000
+  entries (ratios 0.82 to 0.99).
+- On the quiet Mac it is faster for fill and drain of a list and a hash (by 1 to 10 percent), equal for a map, and
+  **slower for `replace`, by 4 to 15 percent at 1,000 entries and up to 21 percent for a list of 100 entries**. A
+  replace emits one signal that no model listens to, and an emit with no receiver costs the typed signal about 10 ns
+  (the unconnected-emit table above), against a few for moc. That is consistent with the 10 to 15 ns gap seen
+  here, but I did not isolate it.
+- So end to end the two designs are within roughly 10 percent of each other, and a change costs 70 to 320 ns in
+  either. The difference worth having is the typed key, not the speed; the typed emit with a receiver is 25 to 35
+  percent faster, which is a bare signal measurement, not a model.
+- Size: 112 bytes against 24 per container (24 with static signals). Binary: 186,568 against 171,856 bytes on the Mac
+  and 189,760 against 149,088 on x86_64. Compile, one translation unit: 4.54 s typed against 3.06 s plus 1.32 s for
+  moc on the Mac, 9.83 s against 6.61 s plus 3.04 s on x86_64, so the total is within 4 percent either way.
+
 ## How to repeat
 
     docker run --rm -v "$PWD":/src -w /src reflect-moc/gcc16-qt610 bash tests/qt/measure/proof.sh
