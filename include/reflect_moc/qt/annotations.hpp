@@ -29,6 +29,21 @@ inline constexpr enum_t enum_{};
 struct flag_t {};
 inline constexpr flag_t flag{};
 
+// Q_REVISION(maj, min) on a slot, an invokable or a signal, and REVISION on a property:
+// `[[=rqt::revision{1, 2}]]`. QMetaMethod::revision() and QMetaProperty::revision() read it back as moc writes it
+// (major in the high byte, minor in the low one).
+struct revision {
+  int major = 0;
+  int minor = 0;
+  constexpr unsigned encoded() const { return static_cast<unsigned>(major << 8 | minor); }
+  static constexpr revision from_encoded(int v) { return {v >> 8, v & 0xff}; }
+  constexpr bool operator==(revision const&) const = default;
+};
+
+// Q_SCRIPTABLE on a slot, an invokable or a signal: `[[=rqt::scriptable]]`.
+struct scriptable_t {};
+inline constexpr scriptable_t scriptable{};
+
 // Text inside an annotation. A `char const*` that points at a string literal
 // is not a structural value, so reading the annotation back (extract) fails
 // with `reflect_constant failed`; the characters are stored inline instead.
@@ -72,6 +87,7 @@ struct property {
   bool scriptable = true;
   bool stored = true;
   int index = -1;  // explicit position in the property table; -1: declaration order, after the indexed ones
+  rqt::revision revision{};  // REVISION(maj, min); {0, 0}: none
 };
 
 struct classinfo {
@@ -142,7 +158,7 @@ consteval bool is_property_keyword(std::string_view t) {
   for (auto k : {"READ", "WRITE", "MEMBER", "RESET", "NOTIFY", "REVISION", "DESIGNABLE", "SCRIPTABLE", "STORED", "USER",
                  "CONSTANT", "FINAL", "REQUIRED", "BINDABLE"})
     if (t == k) return true;
-  return false;
+  return t.starts_with("REVISION(");  // REVISION(2, 3) stringifies as the words "REVISION(2," and "3)"
 }
 
 consteval std::vector<std::string_view> split_words(std::string_view s) {
@@ -184,6 +200,29 @@ consteval int parse_number(std::string_view s) {
   return n;
 }
 
+// REVISION 515 (the encoded value), REVISION(515) and REVISION(2, 3) (major, minor). Leaves i on the last word it used.
+consteval int parse_revision(std::vector<std::string_view> const& w, std::size_t& i) {
+  std::string text;
+  if (w[i] == "REVISION") {
+    text = std::string{word_after("REVISION", w, i)};
+  } else {
+    text = std::string{w[i].substr(std::string_view{"REVISION"}.size())};
+    while (text.find(')') == std::string::npos) text.append(" ").append(word_after("REVISION", w, i));
+  }
+  if (text.starts_with("(")) {
+    std::size_t const close = text.find(')');
+    if (close == std::string::npos || close + 1 != text.size()) bad_property("REVISION( needs a closing parenthesis");
+    text = text.substr(1, close - 1);
+  }
+  std::size_t const comma = text.find(',');
+  if (comma == std::string::npos) return parse_number(text);
+  int const major = parse_number(std::string_view{text}.substr(0, comma));
+  std::string_view minor{text};
+  minor.remove_prefix(comma + 1);
+  while (minor.starts_with(' ')) minor.remove_prefix(1);
+  return major << 8 | parse_number(minor);
+}
+
 consteval void parse_keywords(prop_decl& p, std::vector<std::string_view> const& w, std::size_t first_keyword) {
   for (std::size_t i = first_keyword; i < w.size(); ++i) {
     std::string_view const k = w[i];
@@ -192,7 +231,7 @@ consteval void parse_keywords(prop_decl& p, std::vector<std::string_view> const&
     else if (k == "MEMBER") p.member = short_text{word_after(k, w, i)};
     else if (k == "RESET") p.reset = short_text{word_after(k, w, i)};
     else if (k == "NOTIFY") p.notify = short_text{word_after(k, w, i)};
-    else if (k == "REVISION") p.revision = parse_number(word_after(k, w, i));
+    else if (k.starts_with("REVISION")) p.revision = parse_revision(w, i);
     else if (k == "DESIGNABLE") p.designable = parse_bool_value(k, w, i);
     else if (k == "SCRIPTABLE") p.scriptable = parse_bool_value(k, w, i);
     else if (k == "STORED") p.stored = parse_bool_value(k, w, i);

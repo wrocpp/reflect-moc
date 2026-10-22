@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <initializer_list>
+#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
@@ -158,9 +159,28 @@ consteval std::string signal_parameter_name(info m, std::size_t index) {
   return std::string{item};
 }
 
-consteval std::size_t entry_arity(info fn) {
+consteval std::size_t entry_full_arity(info fn) {
   return is_data_signal(fn) ? signal_param_types(fn).size() : meta::parameters_of(fn).size();
 }
+
+// QPrivateSignal as the last parameter of a signal: a tag only the class can make, so that nothing else can emit the
+// signal. moc leaves it out of the signature and the meta-object; so does rqt (the class declares the struct).
+consteval bool has_private_tag(info fn) {
+  if (kind_of(fn) != method_kind::signal_) return false;
+  std::size_t const n = entry_full_arity(fn);
+  if (n == 0) return false;
+  info const t = meta::remove_cvref(is_data_signal(fn) ? signal_param_types(fn)[n - 1]
+                                                       : meta::type_of(meta::parameters_of(fn)[n - 1]));
+  return meta::is_class_type(t) && meta::has_identifier(t) && meta::identifier_of(t) == "QPrivateSignal";
+}
+
+// The parameters the meta-object lists: all of them, but a QPrivateSignal tag.
+consteval std::size_t entry_arity(info fn) { return entry_full_arity(fn) - (has_private_tag(fn) ? 1 : 0); }
+
+// Q_REVISION(maj, min) and Q_SCRIPTABLE on a slot, an invokable or a signal, as annotations.
+consteval bool has_method_revision(info fn) { return has<revision>(fn); }
+consteval unsigned method_revision(info fn) { return get<revision>(fn).encoded(); }
+consteval unsigned method_extra_flags(info fn) { return has<scriptable_t>(fn) ? QtMocConstants::MethodScriptable : 0u; }
 
 consteval info entry_param_type(info fn, std::size_t i) {
   return is_data_signal(fn) ? signal_param_types(fn)[i] : meta::type_of(meta::parameters_of(fn)[i]);
@@ -175,7 +195,7 @@ consteval void append_entries(std::vector<method_entry>& out, info fn) {
     out.push_back({.fn = fn, .nargs = entry_arity(fn), .cloned = false});
     return;
   }
-  std::size_t const full = meta::parameters_of(fn).size();
+  std::size_t const full = entry_arity(fn);
   out.push_back({.fn = fn, .nargs = full, .cloned = false});
   // A non-public function has no clones: the call goes through a pointer to
   // member, which cannot supply a default argument.
@@ -195,8 +215,30 @@ consteval std::vector<method_entry> make_method_entries(info cls) {
   return out;
 }
 
+// An annotation that the table would otherwise ignore is an error: a function that is a signal and a slot at once
+// (the table takes the first), and a revision or scriptable flag on something that is not a signal, slot or invokable.
+consteval void check_method_annotations(info cls) {
+  for (auto m : meta::members_of(cls, unchecked)) {
+    if (!(meta::is_function(m) || meta::is_variable(m) || meta::is_nonstatic_data_member(m))) continue;
+    if (meta::is_function(m) && static_cast<int>(has<signal_t>(m)) + static_cast<int>(has<slot_t>(m)) +
+                                        static_cast<int>(has<invokable_t>(m)) > 1)
+      throw meta::exception("rqt: a member function is annotated as more than one of signal_function, slot and invokable; "
+                            "the meta-object would list it as only the first",
+                            m);
+    if ((has<revision>(m) || has<scriptable_t>(m)) && kind_of(m) == method_kind::none)
+      throw meta::exception("rqt::revision and rqt::scriptable go on a signal, a slot or an invokable (a property takes "
+                            "REVISION or .revision, and is scriptable through SCRIPTABLE)",
+                            m);
+  }
+}
+
+consteval std::vector<method_entry> make_checked_method_entries(info cls) {
+  check_method_annotations(cls);
+  return make_method_entries(cls);
+}
+
 template <class D>
-inline constexpr auto method_entries = std::define_static_array(make_method_entries(^^D));
+inline constexpr auto method_entries = std::define_static_array(make_checked_method_entries(^^D));
 
 template <class D>
 inline constexpr std::size_t method_total = method_entries<D>.size();
@@ -264,6 +306,7 @@ struct prop_desc {
   info reset = absent();
   short_text name{};
   unsigned flags = 0;
+  unsigned revision = 0;  // encoded, as QMetaProperty::revision() returns it
   bool writable = false;
 };
 
@@ -350,7 +393,8 @@ consteval prop_desc make_prop(info cls, info anchor, property const& p, std::str
 consteval property annotation_from(prop_decl const& pd) {
   return {.read = pd.read, .write = pd.write, .notify = pd.notify, .reset = pd.reset, .name = pd.name,
           .final = pd.final, .constant = pd.constant, .required = pd.required, .user = pd.user,
-          .designable = pd.designable, .scriptable = pd.scriptable, .stored = pd.stored};
+          .designable = pd.designable, .scriptable = pd.scriptable, .stored = pd.stored,
+          .revision = revision::from_encoded(pd.revision)};
 }
 
 // A static constexpr member of type prop_decl: what RQT_PROPERTY declares.
@@ -416,6 +460,7 @@ consteval std::vector<prop_desc> make_props(info cls) {
       continue;
     }
     d.flags = property_flags_of(d, annotation);
+    d.revision = annotation.revision.encoded();
     if (annotation.index < 0)
       rest.push_back(d);
     else
@@ -447,6 +492,7 @@ struct prop_row {
   std::size_t reset = 0;
   short_text name{};
   unsigned flags = 0;
+  unsigned revision = 0;
   bool writable = false;
 };
 
@@ -473,6 +519,7 @@ consteval std::vector<prop_row> make_prop_rows(info cls) {
                    .reset = position_of(cls, d.reset),
                    .name = d.name,
                    .flags = d.flags,
+                   .revision = d.revision,
                    .writable = d.writable});
   return out;
 }
@@ -492,6 +539,7 @@ consteval prop_desc expand_prop(info cls, prop_row const& r) {
               .reset = member_at(cls, r.reset),
               .name = r.name,
               .flags = r.flags,
+              .revision = r.revision,
               .writable = r.writable};
   d.type = present(d.member) ? meta::remove_cvref(meta::type_of(d.member))
                              : meta::remove_cvref(meta::return_type_of(d.read));
@@ -544,6 +592,25 @@ consteval std::string_view enum_alias(enum_entry const& e) { return meta::identi
 
 template <class D>
 inline constexpr auto enum_list = std::define_static_array(make_enums(^^D));
+
+// QMetaEnum::fromType<E>() calls qt_getEnumMetaObject(E) and qt_getEnumName(E), which RQT_OBJECT declares as friend
+// templates (the way Q_ENUM declares a friend per enum). `Tag` is a type nested in the class that declares them, so its
+// parent is that class. They answer for the enums that class registers: E is a registered enum or a QFlags alias.
+consteval std::optional<enum_entry> registered_enum(info owner, info e) {
+  if (!meta::is_class_type(owner) || !meta::is_complete_type(owner)) return std::nullopt;
+  for (auto const& entry : make_enums(owner))
+    if (meta::dealias(entry.type) == meta::dealias(e)) return entry;
+  return std::nullopt;
+}
+
+template <info Tag, info E>
+inline constexpr bool declares_enum = registered_enum(meta::parent_of(Tag), E).has_value();
+
+template <info Tag, info E>
+constexpr char const* enum_name_of() {
+  constexpr char const* name = std::define_static_string(enum_name(*registered_enum(meta::parent_of(Tag), E)));
+  return name;
+}
 
 // Class info: [[=rqt::classinfo{...}]] on the class, then RQT_CLASSINFO in declaration order.
 consteval std::vector<classinfo> make_classinfos(info cls) {

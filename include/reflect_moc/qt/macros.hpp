@@ -37,6 +37,17 @@
   }                                                                                                        \
                                                                                                            \
  private:                                                                                                  \
+  struct QPrivateSignal {};                                                                                \
+  struct rqt_self_tag_ {};                                                                                 \
+  /* what Q_ENUM declares per enum, once, for every enum this class registers (QMetaEnum::fromType) */    \
+  template <class rqt_E>                                                                                   \
+    requires(::rqt::detail::declares_enum<^^rqt_self_tag_, ^^rqt_E>)                                       \
+  friend ::QMetaObject const* qt_getEnumMetaObject(rqt_E const&) noexcept { return &staticMetaObject; }   \
+  template <class rqt_E>                                                                                   \
+    requires(::rqt::detail::declares_enum<^^rqt_self_tag_, ^^rqt_E>)                                       \
+  friend char const* qt_getEnumName(rqt_E const&) noexcept {                                              \
+    return ::rqt::detail::enum_name_of<^^rqt_self_tag_, ^^rqt_E>();                                        \
+  }                                                                                                        \
   static void qt_static_metacall(::QObject* rqt_o, ::QMetaObject::Call rqt_call, int rqt_id, void** rqt_args) { \
     ::rqt::static_call<RQT_SELF>(rqt_o, rqt_call, rqt_id, rqt_args);                                       \
   }
@@ -56,8 +67,12 @@
 
 // Q_ENUM(Mode), Q_FLAG(Opts) and Q_CLASSINFO("key", "value"): static constexpr holders the library finds
 // by reflection. The enum (and for Q_FLAG the QFlags alias) must already be declared.
-#define RQT_ENUM(Type) static constexpr ::rqt::enum_decl RQT_UNIQUE(rqt_enum_){^^Type, false};
-#define RQT_FLAG(Type) static constexpr ::rqt::enum_decl RQT_UNIQUE(rqt_flag_){^^Type, true};
+// They also declare what Q_ENUM declares, for a class that has no RQT_OBJECT (a mixin on rqt::Object<B>).
+#define RQT_ENUM_FRIENDS_(Type)                                                                            \
+  friend ::QMetaObject const* qt_getEnumMetaObject(Type) noexcept { return &staticMetaObject; }           \
+  friend char const* qt_getEnumName(Type) noexcept { return #Type; }
+#define RQT_ENUM(Type) static constexpr ::rqt::enum_decl RQT_UNIQUE(rqt_enum_){^^Type, false}; RQT_ENUM_FRIENDS_(Type)
+#define RQT_FLAG(Type) static constexpr ::rqt::enum_decl RQT_UNIQUE(rqt_flag_){^^Type, true}; RQT_ENUM_FRIENDS_(Type)
 #define RQT_CLASSINFO(key, value) static constexpr ::rqt::classinfo RQT_UNIQUE(rqt_classinfo_){key, value};
 #define RQT_CLASS_NAME(name) static constexpr ::rqt::class_name rqt_class_name_{name};
 

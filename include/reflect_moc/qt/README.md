@@ -211,6 +211,16 @@ the default (test: `capability_private_members`).
 | `rqt::enum_` | nested enum | `Q_ENUM` |
 | `rqt::flag` | nested enum | `Q_FLAG` |
 | `rqt::classinfo{key, value}` | class | `Q_CLASSINFO` |
+| `rqt::revision{1, 2}` | slot, invokable, signal | `Q_REVISION(1, 2)` (`QMetaMethod::revision()`) |
+| `rqt::scriptable` | slot, invokable, signal | `Q_SCRIPTABLE` |
+
+A signal may take `QPrivateSignal` as its last parameter (`RQT_OBJECT` declares the tag, `rqt::Object<B>` too, protected):
+it is left out of the signature, as moc does, and only the class can make the tag to call the signal. `QMetaEnum::fromType<E>()`
+works for every enum a class registers: `RQT_OBJECT` declares the friend functions Qt looks for (`RQT_ENUM` also declares them,
+for a class with no `RQT_OBJECT`). What the parser accepts and the tables would ignore stops the build: a function that is a slot
+and an invokable, `rqt::revision` or `rqt::scriptable` on anything else, a function in place of `true` or `false` after
+DESIGNABLE, SCRIPTABLE, STORED or USER, and BINDABLE. Tests: `parity_method_flags`, `parity_private_signal`,
+`parity_enum_from_type`, `parity_revision`, `limit_property_*`, `limit_method_two_kinds`.
 
 `rqt::property` fields, all optional, in this order (a designated initializer keeps it):
 
@@ -223,7 +233,8 @@ the default (test: `capability_private_members`).
 | `.name` | `""` | the property name; empty means the name of the getter or data member |
 | `.final`, `.constant`, `.required`, `.user` | `false` | FINAL, CONSTANT, REQUIRED, USER |
 | `.designable`, `.scriptable`, `.stored` | `true` | DESIGNABLE, SCRIPTABLE, STORED |
-| `.index` | `-1` (unset) | explicit position in the property table (the LAST field) |
+| `.index` | `-1` (unset) | explicit position in the property table |
+| `.revision` | `{0, 0}` | REVISION(maj, min): `.revision = {2, 3}` (the LAST field; `RQT_PROPERTY` takes `REVISION(2, 3)`) |
 
 Property order: moc orders properties by their `Q_PROPERTY` lines, reflect-moc by the
 position of the annotated getter or member. When they differ (a class declares its

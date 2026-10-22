@@ -81,7 +81,47 @@ set(limit_observable_selection_duplicate_role_MESSAGE "satisfaction of .*ValidRo
 set(limit_observable_selection_multi_selected_value_MESSAGE
   "a Multi tracker holds multiple selection, so there is no single value to return")
 set(limit_observable_selection_host_without_signal_MESSAGE "satisfaction of .*SingleHost")
+# No silent drop (docs/moc-parity.md): what the parser accepts and the table builder would ignore stops the build.
+set(limit_property_designable_function_MESSAGE
+  "DESIGNABLE takes true or false; a function name is not supported")
+set(limit_property_scriptable_function_MESSAGE
+  "SCRIPTABLE takes true or false; a function name is not supported")
+set(limit_property_stored_function_MESSAGE
+  "STORED takes true or false; a function name is not supported")
+set(limit_property_user_function_MESSAGE
+  "USER takes true or false; a function name is not supported")
+set(limit_property_bindable_unsupported_MESSAGE
+  "BINDABLE is not supported")
+set(limit_property_read_missing_MESSAGE
+  "needs READ or MEMBER")
+set(limit_property_read_typo_MESSAGE
+  "rqt::property READ 'levl': no member function of that name in Gauge")
+set(limit_property_notify_missing_MESSAGE
+  "rqt::property NOTIFY 'levelChanged': no member function of that name in Gauge")
+set(limit_property_reset_typo_MESSAGE
+  "rqt::property RESET 'resetIt': no member function of that name in Gauge")
+set(limit_rqt_property_write_missing_MESSAGE
+  "rqt::property WRITE 'setLevl': no member function of that name in Gauge")
+set(limit_method_two_kinds_MESSAGE
+  "annotated as more than one of signal_function, slot and invokable")
+set(limit_revision_on_plain_member_MESSAGE
+  "rqt::revision and rqt::scriptable go on a signal, a slot or an invokable")
+set(limit_scriptable_on_plain_member_MESSAGE
+  "rqt::revision and rqt::scriptable go on a signal, a slot or an invokable")
 set(RQT_QT_COMPILE_FAIL_TESTS
+  limit_property_designable_function
+  limit_property_scriptable_function
+  limit_property_stored_function
+  limit_property_user_function
+  limit_property_bindable_unsupported
+  limit_property_read_missing
+  limit_property_read_typo
+  limit_property_notify_missing
+  limit_property_reset_typo
+  limit_rqt_property_write_missing
+  limit_method_two_kinds
+  limit_revision_on_plain_member
+  limit_scriptable_on_plain_member
   limit_observable_selection_builtin_role
   limit_observable_selection_user_role
   limit_observable_selection_duplicate_role
