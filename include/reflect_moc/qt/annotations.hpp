@@ -112,16 +112,37 @@ struct enum_decl {
 
 // Parameter names of a signal data member: `[[=rqt::names("value, count")]] rqt::signal<void(int, int)> changed;`
 // (a function type has no parameter names, and QML reads them).
+// A member with several signatures takes one list per signature, separated by ';' in one literal, or as one literal each:
+// names("value; text") or names("value", "text").
 struct names {
   text<max_text_length> list;
   template <std::size_t N>
   constexpr names(char const (&literal)[N]) : list(literal) {}
+  template <std::size_t N, std::size_t M, std::size_t... R>
+  constexpr names(char const (&first)[N], char const (&second)[M], char const (&... more)[R]) {
+    std::size_t at = 0;
+    auto const append = [&](char const* s, std::size_t n) {
+      for (std::size_t i = 0; i + 1 < n; ++i) list.data[at++] = s[i];
+      list.data[at++] = ';';
+    };
+    append(first, N);
+    append(second, M);
+    (append(more, R), ...);
+    list.data[at - 1] = '\0';
+  }
 };
 
 // `rqt::signal<void(int)> valueChanged;` as a bodyless data member of a class with RQT_OBJECT.
 // Owner is the class being defined. Defined in signal.hpp.
-template <class Sig, meta::info Owner = meta::current_class()>
+// One member can carry up to four signatures, one meta-object row each in declaration order, as moc orders overloads:
+// `rqt::signal<void(int), void(const QString&)> valueChanged;` (signal_overloads.hpp).
+template <class S0, class S1 = void, class S2 = void, class S3 = void, meta::info Owner = meta::current_class()>
 struct signal;
+
+// What rqt::overload<void(int)>(&C::valueChanged) returns: a signal member and the row of the signature chosen, which Qt's connect,
+// QMetaMethod::fromSignal and QSignalSpy take as they take a pointer to a member function (signal_overloads.hpp).
+template <class Obj, class SetT, class Sig, std::size_t Row>
+struct signal_selection;
 
 // `static inline rqt::static_signal<void(int)> valueChanged{};`: a signal that takes no space in the
 // object. Calling it builds a `pending` emission: `emit valueChanged(v);` or `valueChanged(v).from(obj);`.
