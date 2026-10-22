@@ -208,3 +208,6 @@ set_tests_properties(capability_no_moc_in_build PROPERTIES LABELS qt RESOURCE_LO
 
 # Binding B of the regenerated observable-container spec (examples/qt/spec_regen): typed signals, no moc.
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../examples/qt/spec_regen/binding_b spec_regen_binding_b)
+
+# Moc parity: the matrix in docs/moc-parity.md and one test per construct (tests/qt/parity).
+add_subdirectory(parity)
