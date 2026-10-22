@@ -57,6 +57,27 @@ class Sensor : public QObject {
   `capability_static_metaobject_one_line`). The meta-object equals the one moc generates for the same
   class (`capability_differential_against_moc`).
 
+## No macro at all: `rqt::ObjectOf<D, B>`
+
+```cpp
+class Counter : public rqt::ObjectOf<Counter> {                 // a QObject
+ public:
+  explicit Counter(QObject* parent = nullptr) : rqt::ObjectOf<Counter>(parent) {}
+  [[= rqt::property{.write = "setValue", .notify = "valueChanged"}]] int value() const { return value_; }
+  [[= rqt::slot]] void setValue(int v) { value_ = v; valueChanged(v); }
+  rqt::signal<void(int)> valueChanged;                          // a data member, no anchor and no bind()
+  ...
+};
+class Scaled : public rqt::ObjectOf<Scaled, Counter> {};         // a reflected class as the base
+class Panel : public rqt::ObjectOf<Panel, QWidget> {};          // a Qt class as the base
+```
+
+The base supplies what `Q_OBJECT` declares (`metaObject`, `qt_metacast`, `qt_metacall`, `staticMetaObject`, `tr`) as
+overrides that name `D`, and publishes the owner for the `rqt::signal` members, so nothing repeats the class name and
+the class has no hidden data member. `qobject_cast`, pointer-to-member connect and QML see an ordinary `Q_OBJECT` class.
+The class name is a template argument: a class template works as well. The test against moc is
+`tests/qt/parity/parity_macro_free_class.cpp`; the macro audit is in `docs/moc-parity.md`.
+
 ## Signals that take no space
 
 `rqt::signal<void(int)> s;` is the default and stays: it is a data member that keeps an owner pointer.

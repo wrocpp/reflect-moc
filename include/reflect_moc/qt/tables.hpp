@@ -22,6 +22,10 @@ namespace rqt {
 // meta-object data from one that does not.
 class object_tag {};
 
+// The base of a class that has no macro at all.
+template <class D, class B>
+class ObjectOf;
+
 template <class B>
 class Object;
 
@@ -651,15 +655,28 @@ consteval bool declares_member(info cls, std::string_view name) {
 
 consteval bool declares_static_meta_object(info cls) { return declares_member(cls, "staticMetaObject"); }
 
-// A class whose meta-object rqt generates: it has RQT_OBJECT (the rqt_object_ marker) or
-// derives from rqt::Object<B>. Qt's own classes (QObject, QWidget) are not.
+// The rqt::ObjectOf<D, B> a macro-free class derives from, or a null reflection.
+consteval info crtp_base_of(info cls) {
+  for (auto b : meta::bases_of(cls, unchecked)) {
+    info const t = meta::type_of(b);
+    if (meta::has_template_arguments(t) && meta::template_of(t) == ^^ObjectOf) return t;
+  }
+  return info{};
+}
+
+consteval bool derives_crtp(info cls) { return crtp_base_of(cls) != info{}; }
+
+// A class whose meta-object rqt generates: it has RQT_OBJECT (the rqt_object_ marker), derives from
+// rqt::Object<B> or from rqt::ObjectOf<D, B>. Qt's own classes (QObject, QWidget) are not.
 consteval bool is_reflected_class(info t) {
-  return declares_member(t, "rqt_object_") || (meta::is_base_of_type(^^object_tag, t) && !is_object_instance(t));
+  return declares_member(t, "rqt_object_") || derives_crtp(t) ||
+         (meta::is_base_of_type(^^object_tag, t) && !is_object_instance(t));
 }
 
 // The base that supplies the Qt superclass: for a mixin class rqt::Object<B>, for the others
 // the first direct base derived from QObject (a class with several bases takes the QObject one).
 consteval info super_type(info cls) {
+  if (info const crtp = crtp_base_of(cls); crtp != info{}) return meta::template_arguments_of(crtp)[1];  // ObjectOf<D, B>: B
   for (auto b : meta::bases_of(cls, unchecked)) {
     info const t = meta::type_of(b);
     if (t != (^^object_tag) && meta::is_base_of_type(^^QObject, t)) return t;

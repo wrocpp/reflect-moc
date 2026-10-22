@@ -11,6 +11,7 @@ set(RQT_QT_CAPABILITY_TESTS
   capability_invoke_by_name_real_qt
   capability_properties_on_accessors
   capability_notify_signal_linked
+  capability_macro_free_object
   capability_queued_across_qthread
   capability_custom_metatype_queued
   capability_enum_and_flag
@@ -18,6 +19,7 @@ set(RQT_QT_CAPABILITY_TESTS
   capability_qobject_cast_tier_b
   capability_inherited_members
   capability_qwidget_base
+  capability_macro_free_qwidget
   capability_model_base
   capability_qml_binding_and_invokable
   capability_register_qml
