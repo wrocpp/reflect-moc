@@ -12,7 +12,9 @@
 #include <QtQuick/QQuickItem>
 #include <QtQuick/QQuickWindow>
 
+#include <algorithm>
 #include <memory>
+#include <vector>
 
 namespace edge_qml {
 using namespace edge_view;
@@ -21,10 +23,39 @@ constexpr int kWindowWidth = 240;
 constexpr int kWindowHeight = 100;
 constexpr int kRowHeight = 20;  // the delegates below are this high; the window shows kWindowHeight / kRowHeight of them
 
-// A root item, made from a QML string, in an offscreen window.
+// What the items under `item` show: their count, position, size, opacity and visibility, and for a Flickable its
+// content position, so that delegates still being created, a transition and a scroll that is still moving all
+// change it.
+inline void fingerprint_items(QQuickItem* item, std::uint64_t& hash) {
+  mix(hash, static_cast<std::uint64_t>(item->x() * 31 + item->y() * 17 + item->width() * 7 + item->height()));
+  mix(hash, static_cast<std::uint64_t>(item->opacity() * 1000) + (item->isVisible() ? 1 : 0));
+  mix(hash, static_cast<std::uint64_t>(item->property("contentY").toDouble() * 13 + item->property("contentX").toDouble()));
+  for (QQuickItem* child : item->childItems()) fingerprint_items(child, hash);
+}
+
+// A root item, made from a QML string, in an offscreen window. The windows of every live scene are polished and
+// synchronised (a grab does both, at once) each time settle() looks, so a ListView has created its delegates when
+// the wait ends and not whenever the next frame happens to come.
 class Scene {
  public:
-  Scene() = default;
+  Scene() { scenes().push_back(this); }
+  ~Scene() { scenes().erase(std::find(scenes().begin(), scenes().end(), this)); }
+  Scene(const Scene&) = delete;
+  Scene& operator=(const Scene&) = delete;
+
+  static std::vector<Scene*>& scenes() {
+    static std::vector<Scene*> live;
+    return live;
+  }
+  static std::uint64_t fingerprint() {
+    std::uint64_t hash = 14695981039346656037ULL;
+    for (Scene* scene : scenes()) {
+      if (!scene->root || !scene->window.isVisible()) continue;
+      scene->window.grabWindow();
+      fingerprint_items(scene->window.contentItem(), hash);
+    }
+    return hash;
+  }
   // `properties` are the context properties the QML refers to.
   bool load(const QByteArray& qml, const QList<std::pair<QString, QObject*>>& properties) {
     for (const auto& [name, object] : properties) engine.rootContext()->setContextProperty(name, object);
@@ -39,6 +70,7 @@ class Scene {
     window.resize(kWindowWidth, kWindowHeight);
     root->setParentItem(window.contentItem());
     window.show();
+    scene_probe() = &Scene::fingerprint;
     settle();
     return true;
   }
