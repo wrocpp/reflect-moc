@@ -424,6 +424,64 @@ private slots:
         QVERIFY(m.setValue(1, 2, -1));
         QVERIFY(m.isUninitialized(m.value(1, 2)));
     }
+
+    // Added after mutation testing (three mutants survived: a rectangle joined across a gap of rows, a removed middle column took the
+    // wrong cells, a cell was written before its "about").
+    void at_5_6_aGapBetweenRowsEndsARectangle()
+    {
+        Sheet m = makeSheet();
+        m.addRows(keysNamed("r", 4));
+        m.addColumns(keysNamed("c", 2));
+        Recorder rec(&m);
+        QCOMPARE(m.setValues(QList<Cell>{Cell{"r0", "c0", 1.0}, Cell{"r0", "c1", 1.0}, Cell{"r1", "c0", 1.0}, Cell{"r1", "c1", 1.0},
+                                         Cell{"r3", "c0", 1.0}, Cell{"r3", "c1", 1.0}}),
+                 6);
+        QCOMPARE(rec.log, (Log{"cellsAboutToChange 0 0 1 1", "cellsAboutToChange 3 0 3 1", "cellsChanged 0 0 1 1", "cellsChanged 3 0 3 1"}));
+    }
+
+    void capability_aMiddleColumnRemovalKeepsTheValues()
+    {
+        Sheet m = makeSheet();
+        m.addRows(keysNamed("r", 3));
+        m.addColumns(keysNamed("c", 4));
+        for (int r = 0; r < 3; ++r)
+            for (int c = 0; c < 4; ++c)
+                m.setValue("r" + QString::number(r), "c" + QString::number(c), r * 10.0 + c);
+        QVERIFY(m.removeColumn("c1"));
+        QCOMPARE(m.value("r0", "c0"), 0.0);
+        QCOMPARE(m.value("r1", "c2"), 12.0);
+        QCOMPARE(m.value("r2", "c3"), 23.0);
+        QCOMPARE(m.removeColumns(QList<QString>{"c2", "c3"}), 2);
+        QCOMPARE(m.value("r1", "c0"), 10.0);
+        QCOMPARE(m.value("r2", "c0"), 20.0);
+    }
+
+    void at_5_2_theAboutSeesTheOldValueAndTheTwinTheNew()
+    {
+        Sheet m = makeSheet();
+        m.addRows(keysNamed("r", 1));
+        m.addColumns(keysNamed("c", 1));
+        m.setValue("r0", "c0", 1.0);
+        double atAbout = 0, atTwin = 0;
+        QObject ctx;
+        connect(&m, &MS::cellAboutToChange, &ctx, [&] { atAbout = m.value("r0", "c0"); });
+        connect(&m, &MS::cellChanged, &ctx, [&] { atTwin = m.value("r0", "c0"); });
+        QVERIFY(m.setValue("r0", "c0", 7.0));
+        QCOMPARE(atAbout, 1.0);
+        QCOMPARE(atTwin, 7.0);
+    }
+
+    void at_5_7_clearForgetsKeysThatWereLookedUp()
+    {
+        Sheet m = makeSheet();
+        m.addRows(keysNamed("r", 1));
+        m.addColumns(keysNamed("c", 1));
+        QCOMPARE(m.rowIndexOf("r0"), 0);
+        QCOMPARE(m.columnIndexOf("c0"), 0);
+        m.clear();
+        QCOMPARE(m.rowIndexOf("r0"), -1);
+        QCOMPARE(m.columnIndexOf("c0"), -1);
+    }
 };
 
 QTEST_GUILESS_MAIN(tst_matrix)

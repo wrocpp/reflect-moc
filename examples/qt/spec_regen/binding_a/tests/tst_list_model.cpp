@@ -301,6 +301,43 @@ private slots:
         QVERIFY(c.take("a").has_value());
         QCOMPARE(rowKeys(model), QStringLiteral("c"));
     }
+
+    // Added after mutation testing (a mutant that read the value of a dropped row survived): while a removal run is announced the
+    // container has already dropped the entries, and the model answers an invalid variant for each doomed row.
+    void at_4_8_aRowTheContainerAlreadyDroppedReadsEmpty()
+    {
+        LetterContainer c(letters("abcdef"));
+        TestModel<StringIntMap> model(c);
+        QAbstractItemModelTester tester(&model, kQtTest);
+        int doomedRows = 0;
+        int invalidReads = 0;
+        connect(&model, &QAbstractItemModel::rowsAboutToBeRemoved, this, [&](const QModelIndex &, int first, int last) {
+            for (int row = first; row <= last; ++row) {
+                ++doomedRows;
+                invalidReads += model.data(model.index(row, 0), Qt::DisplayRole).isValid() ? 0 : 1;
+            }
+        });
+        QCOMPARE(c.removeMany(QList<QString>{"b", "c", "e"}), 3);
+        QCOMPARE(doomedRows, 3);
+        QCOMPARE(invalidReads, 3);
+    }
+
+    // Added after mutation testing (a mutant that left the key-to-row map fresh after an insert survived): a lookup after inserts
+    // before a key finds the key's new row.
+    void at_4_9_theRowMapFollowsInsertions()
+    {
+        LetterContainer c(letters("ace"));
+        TestModel<StringIntMap> model(c);
+        QAbstractItemModelTester tester(&model, kQtTest);
+        QSignalSpy spy(&model, &QAbstractItemModel::dataChanged);
+        QVERIFY(c.replace("e", 1));  // builds the row map: "e" is row 2
+        QCOMPARE(spy.takeLast().at(0).toModelIndex().row(), 2);
+        QVERIFY(c.insert("b", 0));
+        QVERIFY(c.insert("d", 0));
+        QVERIFY(c.replace("e", 2));  // "e" is row 4 now
+        QCOMPARE(spy.takeLast().at(0).toModelIndex().row(), 4);
+        QCOMPARE(model.rowOf("e"), 4);
+    }
 };
 
 QTEST_GUILESS_MAIN(tst_list_model)
