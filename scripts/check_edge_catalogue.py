@@ -5,7 +5,7 @@ usage: check_edge_catalogue.py <catalogue dir> <tests dir>
 
 A row is a markdown table row with five cells: id, case, source, test, verdict.
   id       a category letter, a dash and a number: P-01 protocol, R-01 re-entrancy and lifetime, X-01 proxies and
-           selection, V-01 views and QML, D-01 data and types, T-01 threads. Unique across the files.
+           selection, V-01 views and QML, D-01 data and types, T-01 threads, M-01 matrix, S-01 selection tracker. Unique across the files.
   case     what is done, in words
   source   where the case comes from: doc:<page>, tester:<check>, QTBUG-<n>, qttest:<file> or own
   test     <test file without .cpp>  or  <test file>::<function name>; the file is in the tests dir and, with a
@@ -19,7 +19,7 @@ import sys
 from pathlib import Path
 
 VERDICTS = {"works", "refused", "pinned", "fixed"}
-ID = re.compile(r"^[PRXVDT]-\d{2,3}$")
+ID = re.compile(r"^[PRXVDTMS]-\d{2,3}$")
 SOURCE = re.compile(r"^(doc:.+|tester:.+|QTBUG-\d+|qttest:.+|own)$")
 
 

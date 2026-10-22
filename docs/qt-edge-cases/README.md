@@ -13,6 +13,7 @@ cell, an unknown verdict, a missing test file or a duplicate id.
 | [views-qml.md](views-qml.md) | widget views and QML views |
 | [data-types.md](data-types.md) | keys and values: NaN, null strings, move-only, sizes, implicit sharing, metatypes |
 | [threads.md](threads.md) | threads: deleteLater, moveToThread, queued delivery |
+| [matrix-selection.md](matrix-selection.md) | the keyed matrix and its table model (M), the selection tracker and its hosts (S) |
 
 Verdicts: **works** (the model keeps the contract), **refused** (it says no and changes nothing), **pinned** (a known
 gap; a `limit_edge_` test shows it and is flipped by the fix), **fixed** (a gap that was pinned and is closed).

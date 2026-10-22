@@ -344,10 +344,53 @@ Reading, from x86_64 unless said:
   13.57 s for B against 7.97 s plus 4.86 s of moc for A on x86_64, so the totals are within 6 percent.
 - Not measured: a view on top, queued connections, MSVC, Clang.
 
+## The keyed matrix: what one change costs (observable::ObservableMatrix against the spec's matrix)
+
+The spec's matrix (`examples/qt/spec_regen/binding_b`) finds the index of a key in a hash that every change of structure or of a
+key marks stale and the next lookup rebuilds from the whole key list. `observable::ObservableMatrix` keeps the index of a key in
+`InsertionOrderIndex` (a Fenwick tree over insertion slots, the index the hash models use), so a lookup, an add, a rename and a
+removal of a key cost O(log n). `tests/qt/measure/matrix_bench` times each change on a matrix of 8 columns and `int` keys, 400
+changes of each kind at 10,000 rows and 60 at 100,000, with a table model attached (each implementation's own) and bare.
+
+Machine: aarch64, 8 cores, Linux in Docker on a Mac, g++ 16.2.0, Qt 6.10, `-O2`; five runs, median (min-max); the machine was
+shared with other jobs (load average 5.8 before, 5.4 after), so read ratios, not microseconds.
+
+| rows | | operation | spec, ns per change | observable, ns per change | spec / observable |
+|---|---|---|---|---|---|
+| 10,000 | bare | addRow | 325,469 (317,658-332,788) | 72 (69-72) | 4,520 |
+| 10,000 | bare | removeRow | 318,293 (316,101-324,906) | 5,958 (5,792-6,054) | 53 |
+| 10,000 | bare | renameRow | 318,377 (316,212-321,314) | 109 (103-111) | 2,921 |
+| 10,000 | bare | setValue | 976 (949-1,042) | 103 (91-114) | 9.5 |
+| 10,000 | model | addRow | 321,701 (314,507-324,912) | 163 (148-164) | 1,974 |
+| 10,000 | model | removeRow | 319,898 (317,192-331,541) | 6,121 (6,010-6,188) | 52 |
+| 10,000 | model | renameRow | 317,246 (314,081-321,821) | 138 (132-159) | 2,299 |
+| 10,000 | model | setValue | 979 (948-1,051) | 146 (138-166) | 6.7 |
+| 100,000 | bare | addRow | 3,665,802 (3,379,950-4,026,263) | 156 (121-364) | 23,499 |
+| 100,000 | bare | removeRow | 3,620,559 (3,455,576-4,163,880) | 68,101 (64,420-142,468) | 53 |
+| 100,000 | bare | renameRow | 3,647,017 (3,361,270-4,017,796) | 503 (346-765) | 7,251 |
+| 100,000 | bare | setValue | 65,479 (60,538-75,200) | 549 (382-817) | 119 |
+| 100,000 | model | addRow | 3,715,351 (3,409,776-3,999,107) | 336 (297-964) | 11,058 |
+| 100,000 | model | removeRow | 3,756,249 (3,450,865-4,075,207) | 73,169 (66,470-107,482) | 51 |
+| 100,000 | model | renameRow | 3,705,828 (3,549,900-4,033,948) | 683 (545-777) | 5,426 |
+| 100,000 | model | setValue | 65,026 (56,644-73,299) | 637 (546-1,056) | 102 |
+
+Reading:
+
+- The spec's cost of a change of structure or of a key is linear in the rows (318 microseconds at 10,000, 3.6 milliseconds at
+  100,000: ten times the rows, eleven times the time). It is one rebuild of the key hash per change, because each of these
+  changes stales it and the next lookup rebuilds it. The first `setValue` pays one rebuild, which is why its row is slow at
+  100,000 rows (60 changes, one rebuild: about 60 microseconds each); at 10,000 it is a few percent of a rebuild.
+- `ObservableMatrix` adds a row in 70 to 340 nanoseconds and renames one in 100 to 680 nanoseconds, at both sizes: the cost
+  does not depend on the rows, only a little on the cache. A removal is 6 microseconds at 10,000 rows and 68 at 100,000, still
+  linear: that is not the key index but the move of the cells behind the row (a dense row-major table, 8 doubles a row), which no
+  index can avoid; it is 53 times cheaper than the spec's removal.
+- Not measured: columns (the same index, with the cost of moving the cells of every row), `setValues`, and a view on top.
+
 ## How to repeat
 
     docker run --rm -v "$PWD":/src -w /src reflect-moc/gcc16-qt610 bash tests/qt/measure/proof.sh
     docker run --rm -v "$PWD":/src:ro -w /src reflect-moc/gcc16-qt610 bash tests/qt/measure/observable_bench/run.sh
     docker run --rm -v "$PWD":/src:ro -w /src reflect-moc/gcc16-qt610 bash tests/qt/measure/spec_bench/run.sh
+    docker run --rm -e RQT_RUNS=5 -v "$PWD":/src:ro -w /src reflect-moc/gcc16-qt610 bash tests/qt/measure/matrix_bench/run.sh
 
 Not measured here: x86_64, other compilers, other Qt versions.
