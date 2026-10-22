@@ -24,6 +24,7 @@ The macro-free column is the spelling with no macro at all; 'same' means the ref
 | A-03 | gadget | `Q_GADGET` | - | - | unsupported | - | `metaObjectData` is fed a QObject-shaped flag set and the dispatch assumes a QObject; an `rqt::Gadget<D>` base would carry it |
 | A-04 | namespace meta-object | `Q_NAMESPACE`, `Q_ENUM_NS`, `Q_FLAG_NS` | - | - | unsupported | - | a namespace is never complete; `members_of(^^ns)` can enumerate it and an ADL hook can supply `qt_getEnumMetaObject` |
 | A-05 | class name for a template | - | `RQT_CLASS_NAME(n)` | - | same | capability_class_name_override | beyond moc: moc cannot read a class template |
+| A-06 | QObject class, no macro | `Q_OBJECT` | `class D : public rqt::ObjectOf<D, B>` | same | same | parity_macro_free_class | `ObjectOf` supplies the overrides, `staticMetaObject`, `tr` and the owner of data-member signals; B is `QObject`, a Qt class or a reflected class. The meta-object of a class and of a derived class equals moc's row for row. Enums, class info and the class name are `static constexpr` holders or annotations, see the macro audit below |
 | B-01 | signal | `signals: void f(int v);` | `[[=rqt::names("v")]] rqt::signal<void(int)> f;` | same | same | capability_differential_against_moc | a data member carries the name and the owner anchor (8 bytes per signal) |
 | B-02 | signal, static member | `signals:` | `static inline rqt::static_signal<void(int)> f;` | same | same | capability_differential_against_moc | beyond moc: no space in the object; `.from(this)` is required |
 | B-03 | signal, function form | `signals:` | `[[=rqt::signal_function]] void f(int v) { rqt::activate{this}(v); }` | - | same | parity_overloads_function_form | |
@@ -62,3 +63,18 @@ The macro-free column is the spelling with no macro at all; 'same' means the ref
 | G-04 | multiple inheritance | `class D : public QObject, public I` | same | - | same | capability_differential_against_moc | |
 | G-05 | virtual base | not allowed by moc either | - | - | unsupported | - | the owner anchor is computed with `offset_of`; moc rejects it too, so it is not a parity gap |
 | G-06 | include for forward declarations | `Q_MOC_INCLUDE("x.h")` | not needed | - | not-needed | - | there is no generated file, so nothing to include |
+
+## Macro audit
+
+Every macro the library offers, with its spelling that needs none. `ObjectOf<D, B>` is the base of a class with no macro;
+`tests/qt/capability_macro_free_object.cpp` and `capability_macro_free_qwidget.cpp` use no `RQT_` or `Q_` macro at all.
+
+| macro | what it does | without the macro |
+|---|---|---|
+| `RQT_OBJECT`, `RQT_OBJECT_STATIC` | the overrides, `staticMetaObject`, `tr`, and the owner anchor of data-member signals | `rqt::ObjectOf<D, B>` as the base; it adds no data member, so a class is as large as with `RQT_OBJECT_STATIC` |
+| `RQT_PROPERTY(...)` | a property with the exact `Q_PROPERTY` text | `[[=rqt::property{...}]]` on the getter or the data member (already no macro) |
+| `RQT_ENUM(E)`, `RQT_FLAG(F)` | a `static constexpr` holder that names the enum | `static constexpr rqt::enum_decl x{^^E, false};` (the macro is only shorter) |
+| `RQT_CLASSINFO(k, v)` | a `static constexpr` holder | `static constexpr rqt::classinfo x{"k", "v"};` |
+| `RQT_CLASS_NAME(n)` | the name Qt reports | `[[=rqt::class_name{"n"}]]` on the class |
+| `RQT_SELF` | the class, inside its own member | not used by `ObjectOf`; the class is a template argument |
+| `emit`, `signals:`, `slots:` | Qt's keywords, empty macros | `sig(args)` for a data member, `rqt::activate{this}(args)` in a function signal, `[[=rqt::slot]]` |
