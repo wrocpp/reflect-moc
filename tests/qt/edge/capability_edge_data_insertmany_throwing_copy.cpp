@@ -143,7 +143,7 @@ void a_batch_copies_each_value_once() {
   CHECK(Fragile::copies == kBatch);
   Fragile::copies = 0;
   CHECK(p.rig.source.takeMany({1, 2, 3, 4, 5}).size() == kBatch);
-  CHECK(Fragile::copies == kBatch);
+  CHECK(Fragile::copies == 2 * kBatch);  // the taken copies, and the model's snapshot of the rows it announces (P-45)
 }
 
 template <class C>

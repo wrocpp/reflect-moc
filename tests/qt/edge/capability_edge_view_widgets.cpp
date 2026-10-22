@@ -253,8 +253,8 @@ void a_batch_keeps_a_reset_drops() {
   CHECK(!view.currentIndex().isValid() && view.verticalScrollBar()->value() == 0 && view.verticalScrollBar()->maximum() == 0);
 }
 
-// A view that reads the model at "rows about to be removed" gets nothing for a row the container has dropped already (a
-// batch is announced at its "done" signal), and the geometry calls it makes there do not fail.
+// A view that reads the model at "rows about to be removed" still gets the value of a row the container has dropped
+// already (the model keeps a snapshot, P-45), and the geometry calls it makes there do not fail.
 void a_view_reading_at_the_about_signal() {
   MapRig rig;
   for (int k = 0; k < 10; ++k) CHECK(rig.source.insert(k, QString("row %1").arg(k)));
@@ -270,7 +270,7 @@ void a_view_reading_at_the_about_signal() {
     }
   });
   CHECK(rig.source.removeMany({2, 3, 7}) == 3);
-  CHECK(readAtAbout == QStringList({"", "", ""}));  // the container no longer holds them
+  CHECK(readAtAbout == QStringList({"row 7", "row 2", "row 3"}));  // the snapshot is served, runs announced last first
   settle();
   CHECK(rig.model->rowCount() == 7);
   // Qt's model keeps the data until the rows are gone; that is the one difference, and the contract of the container

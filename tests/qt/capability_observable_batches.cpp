@@ -241,17 +241,17 @@ void removal_is_one_cycle_per_run_from_the_bottom() {
   MapModel model(&map, show_map);
   QAbstractItemModelTester tester(&model, QAbstractItemModelTester::FailureReportingMode::Fatal);
   RowLog log(model);
-  // While a run is announced the container has already dropped the entries, so a view that reads a doomed row
-  // gets nothing instead of a value that is no longer there.
-  bool doomedRowsReadEmpty = true;
+  // While a run is announced the container has already dropped the entries, but the model keeps a snapshot of them,
+  // so a view that reads a doomed row gets the value it showed (rows 0..7 hold 10..80).
+  bool doomedRowsReadTheirValues = true;
   QObject::connect(&model, &QAbstractItemModel::rowsAboutToBeRemoved, &model, [&](const QModelIndex&, int first, int last) {
-    for (int row = first; row <= last; ++row) doomedRowsReadEmpty = doomedRowsReadEmpty && !model.index(row, 0).data().isValid();
+    for (int row = first; row <= last; ++row) doomedRowsReadTheirValues = doomedRowsReadTheirValues && model.index(row, 0).data() == 10 * (row + 1);
   });
   CHECK(map.removeMany({2, 3, 6, 8}) == 4);
   CHECK(log.take() == QStringList({"aboutToRemove 7 7 count=8", "removed 7 7 count=7", "aboutToRemove 5 5 count=7",
                                    "removed 5 5 count=6", "aboutToRemove 1 2 count=6", "removed 1 2 count=4"}));
   CHECK(shown(model) == QList<int>({10, 40, 50, 70}));
-  CHECK(doomedRowsReadEmpty);
+  CHECK(doomedRowsReadTheirValues);
 }
 
 // The keys may come in any order: the runs are those of the rows, not of the list the caller wrote.

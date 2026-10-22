@@ -69,8 +69,16 @@ list, a sorted copy of the keys for a map, a Fenwick tree over insertion slots f
 - `editValue(key, edit, roles)` changes a value in place, and the data signals carry the roles that changed; the model
   passes them to `dataChanged`, and an empty list means every role. `replace` announces an empty list.
 - The model counts its own rows. While a batch is announced the container already holds the final content, so its size
-  differs from what the view has been told, and a row inside a removal that the container has dropped reads as empty.
+  differs from what the view has been told.
+- A batch removal (`removeMany`, `takeMany`) erases the entries before the model announces its runs, yet a receiver of
+  `rowsAboutToBeRemoved` may read the rows that are about to go. So the model copies the (key, value) pairs of the
+  doomed entries when the batch is announced, serves them to `data()` while the runs are announced, and drops the
+  copies after the last one. The cost is k value copies per batch removal of k entries; a single `remove` and
+  `removeRange` announce before they erase and copy nothing.
 - `setData` builds the new value with the column's editor and calls `replace`; a column without an editor is read only.
+  An editable column answers `Qt::EditRole` with what it displays, so a delegate starts from the value. `data` and
+  `setData` refuse an index of another model (Qt's `checkIndex` warns about it) and an invalid one.
+- A table with no column announces no `dataChanged` (its row has no cell to name).
 - `ContainerTableModel<C>` gives one column per `Column` (header, display function, optional editor).
 - A container and its models live in one thread. A debug build asserts it; move data between threads, not the model.
 - A value type whose move can throw is refused at compile time: a Qt container allocates inside the insert, so a

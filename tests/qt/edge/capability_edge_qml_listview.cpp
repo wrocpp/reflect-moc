@@ -504,8 +504,8 @@ void content_position() {
   CHECK(Scene::get(w.list, "count").toInt() == 10);
 }
 
-// A script or delegate reading a row at "rows about to be removed": the model gives nothing for a row the container has
-// already dropped (a batch is announced at its done signal), the delegate of that row still shows what it showed,
+// A script or delegate reading a row at "rows about to be removed": the model serves its snapshot of a row the container
+// has already dropped (a batch is announced at its done signal), the delegate of that row still shows what it showed,
 // and nothing crashes.
 void reading_a_dropped_row() {
   MapRig rig;
@@ -517,7 +517,10 @@ void reading_a_dropped_row() {
   const QVariantList reads = scene.get("reads").toList();
   const QVariantList shown = scene.get("textsAtAbout").toList();
   CHECK(reads.size() == 3 && shown.size() == 3);
-  for (const QVariant& r : reads) CHECK(r.toString() == "undefined");  // data() of a dropped row is an invalid variant
+  QStringList readTexts;
+  for (const QVariant& r : reads) readTexts.append(r.toString());
+  readTexts.sort();
+  CHECK(readTexts == QStringList({"row 2", "row 3", "row 9"}));  // data() of a dropped row answers from the snapshot
   QStringList texts;
   for (const QVariant& t : shown) texts.append(t.toString());
   texts.sort();
