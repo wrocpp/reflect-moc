@@ -249,8 +249,10 @@ void destructors_run_inside_the_window() {
   CHECK(seen.size() == 1 && seen[0].id == 20 && seen[0].phase == Phase::window && seen[0].rows == 3);  // the model still shows 3 rows
   fill();
   CHECK(source.removeMany({1, 3}) == 2);
-  CHECK(seen.size() == 2);
-  for (const Seen& s : seen) CHECK(s.phase == Phase::window && s.rows == 3);
+  // The model keeps a copy of each doomed entry so a receiver can still read the row (V-12/P-45 fix), and that copy
+  // dies once the runs are announced: two destructors in the window with 3 rows, then two of the snapshot with 1.
+  CHECK(seen.size() == 4);
+  for (std::size_t i = 0; i < seen.size(); ++i) CHECK(seen[i].phase == Phase::window && seen[i].rows == (i < 2 ? 3 : 1));
   fill();
   CHECK(source.clear());
   CHECK(seen.size() == 3);
@@ -263,8 +265,8 @@ void destructors_run_inside_the_window() {
   const T taken = source.takeMany({1, 2});
   // takeMany copies each entry into the result before it announces, with no temporary to destroy (it used to copy through
   // a by-value parameter, which left two destructors outside the window), and drops the originals inside it.
-  CHECK(taken.size() == 2 && seen.size() == 2);
-  for (const Seen& s : seen) CHECK(s.phase == Phase::window && s.rows == 3);
+  CHECK(taken.size() == 2 && seen.size() == 4);  // and the two snapshot copies the model drops after the runs
+  for (std::size_t i = 0; i < seen.size(); ++i) CHECK(seen[i].phase == Phase::window && seen[i].rows == (i < 2 ? 3 : 1));
   g_echo = nullptr;
 }
 }  // namespace

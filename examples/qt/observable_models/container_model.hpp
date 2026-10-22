@@ -39,6 +39,7 @@
 
 #include <algorithm>
 #include <functional>
+#include <map>
 #include <optional>
 #include <utility>
 #include <vector>
@@ -57,6 +58,43 @@ struct Column {
   QString header;
   Display display;
   Editor edit{};
+};
+
+// The (key, value) pairs a batch removal is about to drop. The container has erased them by the time the model
+// announces the runs, and a receiver of rowsAboutToBeRemoved may still read them, so valueAt() falls back here
+// until the last run is done. Only a map, hash or set has batches; the other containers keep nothing.
+template <Order O, class Key, class Value>
+class DoomedEntries {
+ public:
+  void add(const Key&, const Value&) {}
+  void clear() {}
+  const Value* find(const Key&) const { return nullptr; }
+};
+template <class Key, class Value>
+class DoomedEntries<Order::sorted, Key, Value> {
+ public:
+  void add(const Key& key, const Value& value) { m_entries.insert_or_assign(key, value); }
+  void clear() { m_entries.clear(); }
+  const Value* find(const Key& key) const {
+    const auto it = m_entries.find(key);
+    return it == m_entries.end() ? nullptr : &it->second;
+  }
+
+ private:
+  std::map<Key, Value> m_entries;
+};
+template <class Key, class Value>
+class DoomedEntries<Order::unordered, Key, Value> {
+ public:
+  void add(const Key& key, const Value& value) { m_entries.insert(key, value); }
+  void clear() { m_entries.clear(); }
+  const Value* find(const Key& key) const {
+    const auto it = m_entries.constFind(key);
+    return it == m_entries.constEnd() ? nullptr : &it.value();
+  }
+
+ private:
+  QHash<Key, Value> m_entries;
 };
 
 template <class C, class Model>
@@ -90,7 +128,7 @@ class ContainerModelBase : public Model {
   }
 
   bool setData(const QModelIndex& index, const QVariant& value, int role = Qt::EditRole) override {
-    if (!m_source || !index.isValid() || index.row() >= rowCount() || role != Qt::EditRole || !editable(index.column())) return false;
+    if (!m_source || !ownsIndex(index) || index.row() >= rowCount() || role != Qt::EditRole || !editable(index.column())) return false;
     const Key key = keyAt(index.row());
     const std::optional<Value> edited = editorOf(index.column())(m_source->value(key), value);
     return edited && m_source->replace(key, *edited);
@@ -114,7 +152,18 @@ class ContainerModelBase : public Model {
 
   // The value of the entry in a row, or nullptr for a row whose entry the container has already dropped, which a
   // row inside a batch removal still is while its begin and end are being announced.
-  const Value* valueAt(const Key& key) const { return m_source && m_source->contains(key) ? &m_source->value(key) : nullptr; }
+  const Value* valueAt(const Key& key) const {
+    return m_source && m_source->contains(key) ? &m_source->value(key) : m_doomed.find(key);
+  }
+
+  // An index of another model is refused, as Qt asks (checkIndex warns about it); an invalid one is refused quietly.
+  bool ownsIndex(const QModelIndex& index) const {
+    return index.isValid() &&
+           this->checkIndex(index, QAbstractItemModel::CheckIndexOption::IndexIsValid | QAbstractItemModel::CheckIndexOption::ParentIsInvalid);
+  }
+
+  // The edit role of an editable column shows what the display role shows, which is what a delegate starts from.
+  bool servesRole(int role, int column) const { return role == Qt::DisplayRole || (role == Qt::EditRole && editable(column)); }
 
  private:
   qsizetype rowOf(const Key& key) const { return m_index.rowOf(key); }
@@ -180,6 +229,7 @@ class ContainerModelBase : public Model {
     QObject::connect(m_source, &Source::entryChanged, this, [this](const Key& key, const QList<int>& roles) {
       const int row = to_row(rowOf(key));
       const int lastColumn = static_cast<const QAbstractItemModel*>(this)->columnCount() - 1;
+      if (lastColumn < 0) return;  // a row of no cells has nothing to announce, and dataChanged needs valid indexes
       emit this->dataChanged(this->index(row, 0), this->index(row, lastColumn), roles);
     });
 
@@ -223,7 +273,13 @@ class ContainerModelBase : public Model {
     // content and the model's own list of rows is still the old one.
     if constexpr (Traits::order == Order::sorted || Traits::order == Order::unordered) {
       QObject::connect(m_source, &Source::entriesAdded, this, [this](const QList<Key>& keys) { insertRuns(keys); });
-      QObject::connect(m_source, &Source::entriesRemoved, this, [this](const QList<Key>& keys) { removeRuns(keys); });
+      QObject::connect(m_source, &Source::entriesAboutToBeRemoved, this, [this](const QList<Key>& keys) {
+        for (const Key& key : keys) m_doomed.add(key, m_source->value(key));
+      });
+      QObject::connect(m_source, &Source::entriesRemoved, this, [this](const QList<Key>& keys) {
+        removeRuns(keys);
+        m_doomed.clear();
+      });
     }
 
     QObject::connect(m_source, &Source::aboutToBeCleared, this, [this] {
@@ -288,6 +344,7 @@ class ContainerModelBase : public Model {
 
   QPointer<Source> m_source;
   typename RowIndexFor<Traits::order, Key>::type m_index;
+  DoomedEntries<Traits::order, Key, Value> m_doomed;
   int m_pendingRow = -1;
   int m_rowCount = 0;
   bool m_open = false;  // this model heard the "about" signal of a change and has not seen its "done" signal
@@ -314,11 +371,11 @@ class ContainerModel : public ContainerModelBase<C, QAbstractListModel> {
       : Base(source, parent), m_formatter(std::move(formatter)), m_editor(std::move(editor)) {}
 
   QVariant data(const QModelIndex& index, int role = Qt::DisplayRole) const override {
-    if (!index.isValid() || index.row() >= this->rowCount()) return {};
+    if (!this->ownsIndex(index) || index.row() >= this->rowCount()) return {};
     const Key key = this->keyAt(index.row());
     if (role == Base::KeyRole && Base::hasKeyRole) return QVariant::fromValue(key);
     const Value* value = this->valueAt(key);
-    if (role == Qt::DisplayRole && value) return m_formatter(key, *value);
+    if (this->servesRole(role, index.column()) && value) return m_formatter(key, *value);
     return {};
   }
 
@@ -351,11 +408,11 @@ class ContainerTableModel : public ContainerModelBase<C, QAbstractTableModel> {
   }
 
   QVariant data(const QModelIndex& index, int role = Qt::DisplayRole) const override {
-    if (!index.isValid() || index.row() >= this->rowCount() || index.column() >= columnCount()) return {};
+    if (!this->ownsIndex(index) || index.row() >= this->rowCount() || index.column() >= columnCount()) return {};
     const Key key = this->keyAt(index.row());
     if (role == Base::KeyRole && Base::hasKeyRole) return QVariant::fromValue(key);
     const Value* value = this->valueAt(key);
-    if (role == Qt::DisplayRole && value) return m_columns[static_cast<std::size_t>(index.column())].display(key, *value);
+    if (this->servesRole(role, index.column()) && value) return m_columns[static_cast<std::size_t>(index.column())].display(key, *value);
     return {};
   }
 
