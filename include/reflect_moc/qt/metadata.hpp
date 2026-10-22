@@ -208,7 +208,8 @@ constexpr auto meta_content = [] {
   auto properties = make_uint_data<D, property_row, property_count<D>>();
   auto enums = make_uint_data<D, enum_row, enum_list<D>.size()>();
   QtMocHelpers::UintData constructors{};
-  return QtMocHelpers::metaObjectData<D, meta_tag<D>>(QMC::MetaObjectFlag{}, string_table<D>{}, methods, properties,
+  constexpr unsigned flags = is_gadget(^^D) ? QMC::PropertyAccessInStaticMetaCall : 0u;  // a gadget has no qt_metacall to read through
+  return QtMocHelpers::metaObjectData<D, meta_tag<D>>(flags, string_table<D>{}, methods, properties,
                                                       enums, constructors, classinfo_block<D>());
 }();
 

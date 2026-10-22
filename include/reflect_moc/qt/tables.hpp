@@ -27,6 +27,10 @@ class object_tag {};
 template <class D, class B>
 class ObjectOf;
 
+// The base of a gadget with no macro: a value class with a meta-object and no QObject in it.
+template <class D, class B>
+class Gadget;
+
 template <class B>
 class Object;
 
@@ -733,10 +737,21 @@ consteval info crtp_base_of(info cls) {
 
 consteval bool derives_crtp(info cls) { return crtp_base_of(cls) != info{}; }
 
+// The rqt::Gadget<D, B> a gadget derives from, or a null reflection.
+consteval info gadget_base_of(info cls) {
+  for (auto b : meta::bases_of(cls, unchecked)) {
+    info const t = meta::type_of(b);
+    if (meta::has_template_arguments(t) && meta::template_of(t) == ^^Gadget) return t;
+  }
+  return info{};
+}
+
+consteval bool is_gadget(info cls) { return gadget_base_of(cls) != info{}; }
+
 // A class whose meta-object rqt generates: it has RQT_OBJECT (the rqt_object_ marker), derives from
 // rqt::Object<B> or from rqt::ObjectOf<D, B>. Qt's own classes (QObject, QWidget) are not.
 consteval bool is_reflected_class(info t) {
-  return declares_member(t, "rqt_object_") || derives_crtp(t) ||
+  return declares_member(t, "rqt_object_") || derives_crtp(t) || is_gadget(t) ||
          (meta::is_base_of_type(^^object_tag, t) && !is_object_instance(t));
 }
 
@@ -744,6 +759,7 @@ consteval bool is_reflected_class(info t) {
 // the first direct base derived from QObject (a class with several bases takes the QObject one).
 consteval info super_type(info cls) {
   if (info const crtp = crtp_base_of(cls); crtp != info{}) return meta::template_arguments_of(crtp)[1];  // ObjectOf<D, B>: B
+  if (info const gadget = gadget_base_of(cls); gadget != info{}) return meta::template_arguments_of(gadget)[1];  // Gadget<D, B>: B
   for (auto b : meta::bases_of(cls, unchecked)) {
     info const t = meta::type_of(b);
     if (t != (^^object_tag) && meta::is_base_of_type(^^QObject, t)) return t;
