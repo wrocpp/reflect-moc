@@ -121,6 +121,11 @@ if(TARGET Qt6::Test)
   endforeach()
 endif()
 
+# Qt edge cases of the models: the catalogue in docs/qt-edge-cases and one test file per category (tests/qt/edge).
+if(TARGET Qt6::Test)
+  add_subdirectory(edge)
+endif()
+
 # One specialization of the observable container and its model in two translation units, under -flto -Wodr.
 if(TARGET Qt6::Core)
   add_executable(capability_class_template_two_tus
