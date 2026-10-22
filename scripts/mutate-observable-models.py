@@ -9,7 +9,13 @@ either a missing test or an equivalent mutant, and the table says which one it w
 
 Run it in the image (the repository is mounted read-only; the work happens in /tmp):
 
-  docker run --rm -v "$PWD":/src:ro -w /src reflect-moc/gcc16-qt610 python3 scripts/mutate-observable-models.py [name...]
+  docker run --rm -v "$PWD":/src:ro -w /src reflect-moc/gcc16-qt610 python3 scripts/mutate-observable-models.py [--tree DIR] [name...]
+
+--tree DIR mutates another tree. The default is examples/qt/observable_models and the tests of this repository. For
+examples/qt/spec_regen/binding_a or binding_b (standalone CMake projects with their own ctest) the binding is copied to /tmp, built there,
+and each mutant of scripts/mutants_spec_regen.py is applied in turn and judged by the binding's own ctest (the compile-fail entries AT-9.n
+only for the mutants that only they can see). Every text of the chosen list is looked for before anything is built, and all that are
+missing are printed.
 """
 import os
 import shutil
@@ -285,7 +291,92 @@ def run(cmd, **kw):
     return subprocess.run(cmd, text=True, capture_output=True, **kw)
 
 
+DEFAULT_TREE = "examples/qt/observable_models"
+SPEC_REGEN = "examples/qt/spec_regen/"
+RUNTIME_TESTS_EXCLUDE = "AT-9"  # the compile-fail entries: slow, and only a constraint mutant needs them
+CTEST_JOBS = "4"
+
+
+def standalone(tree, names):
+    """Mutates one binding of the regenerated spec: its own CMake project, its own ctest."""
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import mutants_spec_regen
+
+    key = os.path.basename(tree.rstrip("/"))
+    mutants = [m for m in mutants_spec_regen.MUTANTS[key] if not names or any(a in m[0] for a in names)]
+    source = os.path.join(SRC, tree)
+    missing = [(name, path) for name, path, old, _, _ in mutants if old not in open(os.path.join(source, path)).read()]
+    for name, path in missing:
+        print(f"text not found in {path}: {name}", file=sys.stderr)
+    if missing:
+        sys.exit(f"{len(missing)} of {len(mutants)} mutant texts are not in the sources; nothing was run")
+    names_seen = [m[0] for m in mutants]
+    if len(set(names_seen)) != len(names_seen):
+        sys.exit("two mutants have the same name")
+
+    work = os.path.join(WORK, key)
+    if os.path.exists(work):
+        shutil.rmtree(work)
+    shutil.copytree(source, work, symlinks=True, ignore=shutil.ignore_patterns("build"))
+    os.chdir(work)
+    cmake = ["cmake", "-S", ".", "-B", "build", "-G", "Ninja", "-DCMAKE_BUILD_TYPE=Debug", f"-DREFLECT_MOC_INCLUDE_DIR={SRC}/include"]
+    if run(cmake).returncode:
+        sys.exit("configure failed")
+    env = dict(os.environ, QT_QPA_PLATFORM="offscreen", LC_ALL="C.UTF-8")
+
+    def build():
+        return run(["cmake", "--build", "build"])
+
+    def passes(*ctest_args):
+        return run(["ctest", "--test-dir", "build", "-j", CTEST_JOBS, "--timeout", str(TEST_TIMEOUT_SECONDS), *ctest_args], env=env).returncode == 0
+
+    baseline = build()
+    if baseline.returncode:
+        sys.exit("baseline does not build:\n" + baseline.stderr[-3000:] + baseline.stdout[-3000:])
+    assert passes(), "the unmutated tests must pass first"
+    killed, unviable, survivors = 0, 0, []
+    for name, path, old, new, constraint in mutants:
+        original = open(path).read()
+        open(path, "w").write(original.replace(old, new, 1))
+        try:
+            built = build()
+            errors = [line for line in (built.stdout + built.stderr).splitlines() if "error" in line]
+            if built.returncode and errors and all("tests/" in line and "static assertion failed" in line for line in errors):
+                # a static_assert of a test file refused it: the tests killed it at compile time
+                verdict = "killed (static_assert)"
+                killed += 1
+            elif built.returncode:
+                verdict = "not viable"
+                unviable += 1
+                print(f"  build: {(errors or [''])[0][:200]}")
+            elif not passes("-E", RUNTIME_TESTS_EXCLUDE) or (constraint and not passes("-R", RUNTIME_TESTS_EXCLUDE)):
+                verdict = "killed"
+                killed += 1
+            else:
+                reason = mutants_spec_regen.EQUIVALENT.get(name)
+                verdict = "SURVIVED (judged equivalent)" if reason else "SURVIVED"
+                survivors.append((name, reason))
+        finally:
+            open(path, "w").write(original)
+        print(f"{verdict:30} {name}", flush=True)
+    for name, reason in survivors:
+        print(f"  survivor: {name}" + (f"\n    equivalent because: {reason}" if reason else ""))
+    unexplained = [name for name, reason in survivors if not reason]
+    print(f"\nMutation: hand-listed textual mutants on {key}, {len(mutants)} mutants: {killed} killed, {len(survivors)} survived "
+          f"({len(survivors) - len(unexplained)} judged equivalent), {unviable} not viable")
+    return 1 if unexplained or unviable else 0
+
+
 def main(argv):
+    tree = DEFAULT_TREE
+    if "--tree" in argv:
+        at = argv.index("--tree")
+        tree = argv[at + 1]
+        argv = argv[:at] + argv[at + 2:]
+    if tree != DEFAULT_TREE:
+        if not tree.startswith(SPEC_REGEN):
+            sys.exit(f"--tree: only {DEFAULT_TREE} and the bindings under {SPEC_REGEN} are known")
+        return standalone(tree, argv)
     if os.path.exists(WORK):
         shutil.rmtree(WORK)
     shutil.copytree(SRC, WORK, ignore=shutil.ignore_patterns("build", ".git"), symlinks=True)
