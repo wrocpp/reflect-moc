@@ -35,6 +35,8 @@ QT="${QTDIR:-/opt/qt}"
 work="${RQT_TRAP_TMP:-/tmp/rqt-trap}"
 trap_log="$work/moc-invoked.log"
 differential=capability_differential_against_moc
+# the oracles: the differential test and every moc parity test (tests/qt/parity) run real moc on purpose
+oracle='^(capability_differential_against_moc|parity_|limit_parity_)'
 status=0
 mkdir -p "$work"
 
@@ -119,18 +121,18 @@ else
   cmake --build "$work/lib" -j4 -- -k 0 > "$work/lib-build.log" 2>&1
   failed="$(grep -E '^FAILED:' "$work/lib-build.log" | sed 's/^FAILED: //' | awk '{print $1}' | sed 's#.*/##' | sort -u)"
   echo "targets that failed to build: ${failed:-none}"
-  others="$(echo "$failed" | grep -v "^$differential" | grep -v '^$' || true)"
-  [ -z "$others" ] || { fail "targets other than the differential test failed:"; echo "$others" | sed 's/^/    /'; }
+  others="$(echo "$failed" | grep -Ev "$oracle" | grep -v '^$' || true)"
+  [ -z "$others" ] || { fail "targets other than the oracles (differential and parity tests) failed:"; echo "$others" | sed 's/^/    /'; }
   echo "$failed" | grep -q "^$differential" && echo "ok: positive control: the differential test failed to build without moc, as it must" || fail "the differential test built without moc: the trap is not working"
   take_record
-  stray="$(echo "$recorded" | grep -v "$differential" | grep -v '^$' || true)"
-  [ -z "$stray" ] || { fail "moc was called by something other than the differential test:"; echo "$stray" | sed 's/^/    /'; }
-  ctest --test-dir "$work/lib" -j2 -E differential > "$work/ctest.log" 2>&1 || fail "ctest failed on the targets that built"
+  stray="$(echo "$recorded" | grep -Ev "differential|parity_" | grep -v '^$' || true)"
+  [ -z "$stray" ] || { fail "moc was called by something other than the oracles:"; echo "$stray" | sed 's/^/    /'; }
+  ctest --test-dir "$work/lib" -j2 -E 'differential|parity_' > "$work/ctest.log" 2>&1 || fail "ctest failed on the targets that built"
   tail -4 "$work/ctest.log" | sed 's/^/    /'
 fi
 
 echo "=== 5. generated moc files in the build trees"
-n="$(find "$work" \( -name 'moc_*.cpp' -o -name 'mocs_compilation*.cpp' -o -name 'moc_predefs.h' \) | grep -v "$differential" | wc -l)"
+n="$(find "$work" \( -name 'moc_*.cpp' -o -name 'mocs_compilation*.cpp' -o -name 'moc_predefs.h' \) | grep -Ev "differential|parity_" | wc -l)"
 [ "$n" -eq 0 ] && echo "ok: none" || fail "$n generated moc files outside the differential target"
 
 echo
