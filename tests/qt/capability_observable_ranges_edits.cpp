@@ -10,6 +10,9 @@
 #include <QtTest/QAbstractItemModelTester>
 
 #include <sys/wait.h>
+#if defined(__linux__)
+#include <sys/prctl.h>
+#endif
 #include <unistd.h>
 
 #include <csignal>
@@ -180,6 +183,9 @@ bool aborts(F&& scenario) {
   std::fflush(nullptr);
   const pid_t child = fork();
   if (child == 0) {
+#if defined(__linux__)
+    prctl(PR_SET_DUMPABLE, 0);  // a core dump to a piped handler (systemd-coredump on a runner) takes seconds per abort
+#endif
     if (!std::freopen("/dev/null", "w", stderr)) _exit(2);
     scenario();
     _exit(0);
