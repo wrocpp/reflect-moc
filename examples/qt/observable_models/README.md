@@ -56,6 +56,13 @@ list, a sorted copy of the keys for a map, a Fenwick tree over insertion slots f
   and one end per run, so a view keeps its selection and scroll position. `to.insertMany(from.takeMany(keys))` moves
   entries between two containers, one announcement on each side. A list has `insertRange`, and a multi container has no
   key to name an entry by before it exists, so both return 0.
+- A batch is staged, then announced. `insertMany` copies each value once into a local staging container, makes the
+  list of keys, detaches a shared container and reserves room, all before `entriesAboutToBeAdded`; the commit moves
+  the staged values in (a map takes the staged nodes over, a hash emplaces them by move). A value whose copy throws
+  therefore changes nothing and announces nothing, at the first, a middle or the last entry. `takeMany` copies before
+  it announces too, and `resetWith` takes its content by value, so the caller's copy happens before the call and the
+  swap in is a move. The cost is one staging container per batch; the copies per entry went from two to one. What a
+  Qt container's own allocation can still do inside the commit (an allocation that fails there) is not covered.
 - `resetWith(content)` replaces everything between one pair of signals, and the model follows with one reset. No
   listener sees the empty state that `clear()` followed by inserts would show. It announces even when both sides are
   empty.

@@ -9,9 +9,18 @@
 //
 // A mutator called from a receiver of this container's own signals (the "about" or the "done" signal of any change,
 // or a signal of a model that follows it) is refused like an invalid request: it returns false (0, or an empty
-// container, for a batch; resetWith, which returns nothing, does nothing), changes nothing and emits nothing, and a
+// container, for a batch; resetWith returns false), changes nothing and emits nothing, and a
 // debug build asserts. A receiver that wants a further change queues it (QMetaObject::invokeMethod with
 // Qt::QueuedConnection) or makes it after the call that is announcing has returned.
+//
+// Staged, then announced. Everything that can throw (the list of keys, the copies of the values, a reserve, a detach
+// of a shared container) is done before the "about" signal, into a staging container the call owns. The commit that
+// follows the announcement moves the staged values in: a Qt map takes the staged nodes over, a hash or set takes
+// them with an emplace into the room that was reserved, and a value's move cannot throw (the static_assert below). A
+// throw while staging, which is a value whose copy throws, changes nothing and emits nothing. What a Qt container's own
+// allocation can still do inside the commit is not covered: an allocation that fails there is std::bad_alloc between
+// the two signals, as it is for Qt itself. resetWith takes its content by value, so the caller's copy happens before
+// the call and the swap in is a move.
 //
 // A gesture on many entries is one event. insertMany, removeMany and takeMany (a map, hash or set) announce the
 // list of keys once, and resetWith replaces the whole content between one pair of signals, so a listener never
@@ -24,6 +33,7 @@
 #include <reflect_moc/qt/qt.hpp>
 
 #include <QtCore/QList>
+#include <QtCore/QMap>
 #include <QtCore/QObject>
 #include <QtCore/QSet>
 #include <QtCore/QThread>
@@ -193,9 +203,12 @@ class ObservableContainer : public QObject {
       for (const Key& key : Traits::keys(entries))
         if (Traits::can_insert(m_items, key)) keys.append(key);
       if (keys.isEmpty() || !fits_rows(Traits::size(m_items), keys.size())) return 0;
+      C staged;  // the copies, which can throw, are made before anything is announced
+      for (const Key& key : keys) stage(staged, key, Traits::value(entries, key));
+      prepareCommit(keys.size());
       const Announcing announcing(*this);
       emit entriesAboutToBeAdded(keys);
-      for (const Key& key : keys) Traits::insert(m_items, key, Traits::value(entries, key));
+      commit(std::move(staged), keys);
       emit entriesAdded(keys);
       return keys.size();
     }
@@ -228,7 +241,7 @@ class ObservableContainer : public QObject {
       if (refusedAsNested()) return taken;
       const QList<Key> present = presentKeys(keys);
       if (present.isEmpty()) return taken;
-      for (const Key& key : present) Traits::insert(taken, key, Traits::value(m_items, key));
+      for (const Key& key : present) stage(taken, key, Traits::value(m_items, key));  // copies first, announce after
       const Announcing announcing(*this);
       emit entriesAboutToBeRemoved(present);
       for (const Key& key : present) Traits::erase(m_items, key);
@@ -248,6 +261,7 @@ class ObservableContainer : public QObject {
     if (Traits::size(content) > kMaxRows) return false;
     const Announcing announcing(*this);
     emit aboutToBeReset();
+    static_assert(std::is_nothrow_move_assignable_v<C>, "a reset swaps the content in between the two signals");
     m_items = std::move(content);
     emit resetCompleted();
     return true;
@@ -310,6 +324,35 @@ class ObservableContainer : public QObject {
   // Batches name an entry by a key it does not hold yet, which a list (it has ranges) and a multi container (its
   // keys are numbered from the newest) cannot do.
   static constexpr bool batchable = Traits::order == Order::sorted || Traits::order == Order::unordered;
+
+  // Puts one copy of an entry into the staging container: one copy of the value, the only one the batch makes.
+  static void stage(C& staged, const Key& key, const Value& value) {
+    if constexpr (Traits::assignable)
+      staged.insert(key, value);
+    else
+      staged.insert(key);
+  }
+
+  // What the commit would otherwise do while the models wait: a shared container is detached (it copies every
+  // entry) and a hash or set gets the room for the new entries.
+  void prepareCommit(qsizetype added) {
+    m_items.detach();
+    if constexpr (requires { m_items.reserve(qsizetype{}); }) m_items.reserve(Traits::size(m_items) + added);
+  }
+
+  // Moves the staged entries in. A map merges the staged nodes, a hash emplaces each value by move, a set inserts the key.
+  void commit(C&& staged, const QList<Key>& keys) {
+    if constexpr (std::is_same_v<C, QMap<Key, Value>>) {
+      m_items.insert(std::move(staged));
+    } else {
+      for (const Key& key : keys) {
+        if constexpr (Traits::assignable)
+          m_items.emplace(key, std::move(staged.find(key).value()));
+        else
+          m_items.insert(key);
+      }
+    }
+  }
 
   // The keys the container holds, each once, in the order given.
   QList<Key> presentKeys(const QList<Key>& keys) const {
