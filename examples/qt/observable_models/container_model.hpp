@@ -101,7 +101,7 @@ class ContainerModelBase : public Model {
     Q_ASSERT_X(source->thread() == this->thread(), "observable::ContainerModelBase",
                "a model must live in the thread of its container (move data between threads, not the model)");
     m_index.assign(Traits::keys(source->items()));
-    m_rowCount = static_cast<int>(source->size());
+    m_rowCount = to_row(source->size());
     connectSource();
   }
 
@@ -131,7 +131,7 @@ class ContainerModelBase : public Model {
     m_open = false;
     if (m_source) {
       m_index.assign(Traits::keys(m_source->items()));
-      m_rowCount = static_cast<int>(m_source->size());
+      m_rowCount = to_row(m_source->size());
     } else {
       m_index.clear();
       m_rowCount = 0;
@@ -153,7 +153,7 @@ class ContainerModelBase : public Model {
     QObject::connect(m_source, &QObject::destroyed, this, [this] { resync(); });
 
     QObject::connect(m_source, &Source::entryAboutToBeAdded, this, [this](const Key& key) {
-      m_pendingRow = static_cast<int>(rowToInsert(key));
+      m_pendingRow = to_row(rowToInsert(key));
       m_open = true;
       this->beginInsertRows(QModelIndex(), m_pendingRow, m_pendingRow);
     });
@@ -165,7 +165,7 @@ class ContainerModelBase : public Model {
     });
 
     QObject::connect(m_source, &Source::entryAboutToBeRemoved, this, [this](const Key& key) {
-      m_pendingRow = static_cast<int>(rowOf(key));
+      m_pendingRow = to_row(rowOf(key));
       m_open = true;
       this->beginRemoveRows(QModelIndex(), m_pendingRow, m_pendingRow);
     });
@@ -178,15 +178,15 @@ class ContainerModelBase : public Model {
 
     // The roles go through as they came, and an empty list means every role, as it does for dataChanged.
     QObject::connect(m_source, &Source::entryChanged, this, [this](const Key& key, const QList<int>& roles) {
-      const int row = static_cast<int>(rowOf(key));
+      const int row = to_row(rowOf(key));
       const int lastColumn = static_cast<const QAbstractItemModel*>(this)->columnCount() - 1;
       emit this->dataChanged(this->index(row, 0), this->index(row, lastColumn), roles);
     });
 
     if constexpr (Traits::movable) {
       QObject::connect(m_source, &Source::entryAboutToBeMoved, this, [this](const Key& from, const Key& to) {
-        const int source = static_cast<int>(from);
-        const int target = static_cast<int>(to);
+        const int source = to_row(from);
+        const int target = to_row(to);
         m_open = true;
         // beginMoveRows takes the row the block is put before, so a move down counts one further.
         this->beginMoveRows(QModelIndex(), source, source, QModelIndex(), target > source ? target + 1 : target);
@@ -200,20 +200,20 @@ class ContainerModelBase : public Model {
     if constexpr (Traits::order == Order::indexed) {
       QObject::connect(m_source, &Source::rangeAboutToBeAdded, this, [this](const Key& first, const Key& last) {
         m_open = true;
-        this->beginInsertRows(QModelIndex(), static_cast<int>(first), static_cast<int>(last));
+        this->beginInsertRows(QModelIndex(), to_row(first), to_row(last));
       });
       QObject::connect(m_source, &Source::rangeAdded, this, [this](const Key& first, const Key& last) {
         if (!heardTheBeginning()) return;
-        m_rowCount += static_cast<int>(last - first + 1);
+        m_rowCount += to_row(last - first + 1);
         this->endInsertRows();
       });
       QObject::connect(m_source, &Source::rangeAboutToBeRemoved, this, [this](const Key& first, const Key& last) {
         m_open = true;
-        this->beginRemoveRows(QModelIndex(), static_cast<int>(first), static_cast<int>(last));
+        this->beginRemoveRows(QModelIndex(), to_row(first), to_row(last));
       });
       QObject::connect(m_source, &Source::rangeRemoved, this, [this](const Key& first, const Key& last) {
         if (!heardTheBeginning()) return;
-        m_rowCount -= static_cast<int>(last - first + 1);
+        m_rowCount -= to_row(last - first + 1);
         this->endRemoveRows();
       });
     }
@@ -260,9 +260,9 @@ class ContainerModelBase : public Model {
     for (std::size_t from = 0; from < rows.size();) {
       std::size_t to = from;
       while (to + 1 < rows.size() && rows[to + 1] == rows[to] + 1) ++to;
-      this->beginInsertRows(QModelIndex(), static_cast<int>(rows[from]), static_cast<int>(rows[to]));
+      this->beginInsertRows(QModelIndex(), to_row(rows[from]), to_row(rows[to]));
       for (std::size_t k = from; k <= to; ++k) m_index.insert(keys[static_cast<qsizetype>(k)], rows[k]);
-      m_rowCount += static_cast<int>(to - from + 1);
+      m_rowCount += to_row(static_cast<qsizetype>(to - from + 1));
       this->endInsertRows();
       from = to + 1;
     }
@@ -278,9 +278,9 @@ class ContainerModelBase : public Model {
     for (std::size_t to = doomed.size(); to > 0;) {
       std::size_t from = to - 1;
       while (from > 0 && doomed[from - 1].first + 1 == doomed[from].first) --from;
-      this->beginRemoveRows(QModelIndex(), static_cast<int>(doomed[from].first), static_cast<int>(doomed[to - 1].first));
+      this->beginRemoveRows(QModelIndex(), to_row(doomed[from].first), to_row(doomed[to - 1].first));
       for (std::size_t k = to; k-- > from;) m_index.erase(doomed[k].second, doomed[k].first);
-      m_rowCount -= static_cast<int>(to - from);
+      m_rowCount -= to_row(static_cast<qsizetype>(to - from));
       this->endRemoveRows();
       to = from;
     }

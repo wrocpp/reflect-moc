@@ -28,6 +28,22 @@ A new entry of a multi container is occurrence 0 and the older ones of its key m
 occurrence is refused. The models find a row from a key in logarithmic time (`row_index.hpp`): the key itself for a
 list, a sorted copy of the keys for a map, a Fenwick tree over insertion slots for a hash or set.
 
+## Keys
+
+- **NaN.** A floating point key that is not equal to itself cannot be found again (a hash never finds it, a map finds it
+  for every key), so `insert` refuses it, `insertMany` skips it like a key that is already there, `contains`, `remove`
+  and `replace` never match it, and a content given whole (the constructor, `resetWith`) loses the entries that have
+  one. Infinity is a key, and `-0.0` and `0.0` are one key.
+- **Order of a map.** `QMap<K>` orders by `std::less<K>`, which a program may specialise, not by `operator<`. The
+  model's sorted index of the keys uses `std::less<K>` too, so its rows follow the container.
+- **Row limit.** A model counts rows in an `int`. A change that would give a container more than `observable::kMaxRows`
+  (`INT_MAX`) entries is refused: `insert`, `insertRange` and `insertMany` return `false` or 0, `resetWith` returns
+  `false`, nothing is announced. A constructor cannot refuse, and asserts in a debug build.
+- **Documented, not fixed.** A reference from `value(key)` is valid until the next change (a copy of `items()` held
+  elsewhere makes the next change detach, and the reference then points into that copy). A hash or set that arrives
+  whole (constructor, `resetWith`, an `insertMany` argument) is listed in the hash's own iteration order, which changes
+  with its seed; after that the model follows insertion order. Hand a sorted container in if the order matters.
+
 ## What else the models do
 
 - `insertRange` and `removeRange` change a run of a list in one announcement, so a model makes one begin and one end.

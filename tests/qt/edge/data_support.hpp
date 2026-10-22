@@ -9,7 +9,12 @@
 #include <QtCore/QVariant>
 #include <QtTest/QAbstractItemModelTester>
 
+#include <csignal>
+#include <cstdio>
 #include <memory>
+
+#include <sys/wait.h>
+#include <unistd.h>
 
 namespace edge_data {
 
@@ -35,5 +40,20 @@ struct Rig {
   observable::ContainerModel<C> model;
   QAbstractItemModelTester tester;
 };
+
+// Runs `scenario` in a child process and reports whether it died of an assertion (SIGABRT).
+template <class F>
+bool aborts(F&& scenario) {
+  std::fflush(nullptr);
+  const pid_t child = fork();
+  if (child == 0) {
+    if (!std::freopen("/dev/null", "w", stderr)) _exit(2);
+    scenario();
+    _exit(0);
+  }
+  int status = 0;
+  waitpid(child, &status, 0);
+  return WIFSIGNALED(status) && WTERMSIG(status) == SIGABRT;
+}
 
 }  // namespace edge_data

@@ -21,6 +21,7 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <functional>
 #include <vector>
 
 namespace observable {
@@ -43,7 +44,8 @@ class SortedIndex {
   // `keys` must be in ascending order, as QMap::keys() returns them.
   void assign(const QList<Key>& keys) { m_keys.assign(keys.begin(), keys.end()); }
   void clear() { m_keys.clear(); }
-  qsizetype rowToInsert(const Key& key) const { return std::lower_bound(m_keys.begin(), m_keys.end(), key) - m_keys.begin(); }
+  // A QMap orders by std::less<Key> (which a program may specialise), not by operator<: search the same way.
+  qsizetype rowToInsert(const Key& key) const { return std::lower_bound(m_keys.begin(), m_keys.end(), key, std::less<Key>{}) - m_keys.begin(); }
   qsizetype rowOf(const Key& key) const { return rowToInsert(key); }
   Key keyAt(qsizetype row) const { return m_keys[static_cast<std::size_t>(row)]; }
   void insert(const Key& key, qsizetype row) { m_keys.insert(m_keys.begin() + row, key); }
@@ -192,7 +194,7 @@ class MultiSortedIndex {
   void erase(const Key&, qsizetype row) { m_keys.erase(m_keys.begin() + row); }
 
  private:
-  qsizetype first_row_of(const K& key) const { return std::lower_bound(m_keys.begin(), m_keys.end(), key) - m_keys.begin(); }
+  qsizetype first_row_of(const K& key) const { return std::lower_bound(m_keys.begin(), m_keys.end(), key, std::less<K>{}) - m_keys.begin(); }
   std::vector<K> m_keys;
 };
 
