@@ -7,6 +7,12 @@
 // replace of a missing key, a move in a container that has no order) returns false, changes nothing
 // and emits nothing.
 //
+// A mutator called from a receiver of this container's own signals (the "about" or the "done" signal of any change,
+// or a signal of a model that follows it) is refused like an invalid request: it returns false (0, or an empty
+// container, for a batch; resetWith, which returns nothing, does nothing), changes nothing and emits nothing, and a
+// debug build asserts. A receiver that wants a further change queues it (QMetaObject::invokeMethod with
+// Qt::QueuedConnection) or makes it after the call that is announcing has returned.
+//
 // A gesture on many entries is one event. insertMany, removeMany and takeMany (a map, hash or set) announce the
 // list of keys once, and resetWith replaces the whole content between one pair of signals, so a listener never
 // sees the empty state that clear followed by inserts would show. The data pair carries the roles that changed,
@@ -59,10 +65,15 @@ class ObservableContainer : public QObject {
                "a container must be changed from the thread it lives in (move data between threads, not the model)");
   }
 
+  // True while one of the mutators below is announcing, that is between its first signal and its last. A mutator that
+  // is called then is a re-entrant change: the models would be told of a change inside a change.
+  bool announcing() const { return m_announcing; }
+
   // Adds an entry. A list takes any index up to its size; a map, hash or set takes a key it does not hold.
   bool insert(const Key& key, Value value = Value{}) {
     assertOwnThread();
-    if (!Traits::can_insert(m_items, key)) return false;
+    if (refusedAsNested() || !Traits::can_insert(m_items, key)) return false;
+    const Announcing announcing(*this);
     emit entryAboutToBeAdded(key);
     Traits::insert(m_items, key, std::move(value));
     emit entryAdded(key);
@@ -71,7 +82,8 @@ class ObservableContainer : public QObject {
 
   bool remove(const Key& key) {
     assertOwnThread();
-    if (!Traits::contains(m_items, key)) return false;
+    if (refusedAsNested() || !Traits::contains(m_items, key)) return false;
+    const Announcing announcing(*this);
     emit entryAboutToBeRemoved(key);
     Traits::erase(m_items, key);
     emit entryRemoved(key);
@@ -84,7 +96,8 @@ class ObservableContainer : public QObject {
       return false;
     } else {
       assertOwnThread();
-      if (!Traits::contains(m_items, key)) return false;
+      if (refusedAsNested() || !Traits::contains(m_items, key)) return false;
+      const Announcing announcing(*this);
       emit entryAboutToBeChanged(key, {});
       Traits::assign(m_items, key, std::move(value));
       emit entryChanged(key, {});
@@ -101,9 +114,10 @@ class ObservableContainer : public QObject {
       return false;
     } else {
       assertOwnThread();
-      if (!Traits::contains(m_items, key)) return false;
+      if (refusedAsNested() || !Traits::contains(m_items, key)) return false;
       Value edited = Traits::value(m_items, key);
       std::forward<Edit>(edit)(edited);
+      const Announcing announcing(*this);
       emit entryAboutToBeChanged(key, roles);
       Traits::assign(m_items, key, std::move(edited));
       emit entryChanged(key, roles);
@@ -117,7 +131,8 @@ class ObservableContainer : public QObject {
       return false;
     } else {
       assertOwnThread();
-      if (!Traits::can_move(m_items, from, to)) return false;
+      if (refusedAsNested() || !Traits::can_move(m_items, from, to)) return false;
+      const Announcing announcing(*this);
       emit entryAboutToBeMoved(from, to);
       Traits::move(m_items, from, to);
       emit entryMoved(from, to);
@@ -132,8 +147,9 @@ class ObservableContainer : public QObject {
       return false;
     } else {
       assertOwnThread();
-      if (values.isEmpty() || !Traits::can_insert(m_items, first)) return false;
+      if (refusedAsNested() || values.isEmpty() || !Traits::can_insert(m_items, first)) return false;
       const Key last = first + values.size() - 1;
+      const Announcing announcing(*this);
       emit rangeAboutToBeAdded(first, last);
       for (qsizetype i = 0; i < values.size(); ++i) Traits::insert(m_items, first + i, std::move(values[i]));
       emit rangeAdded(first, last);
@@ -147,8 +163,9 @@ class ObservableContainer : public QObject {
       return false;
     } else {
       assertOwnThread();
-      if (count <= 0 || !Traits::contains(m_items, first) || first + count > Traits::size(m_items)) return false;
+      if (refusedAsNested() || count <= 0 || !Traits::contains(m_items, first) || first + count > Traits::size(m_items)) return false;
       const Key last = first + count - 1;
+      const Announcing announcing(*this);
       emit rangeAboutToBeRemoved(first, last);
       for (qsizetype i = 0; i < count; ++i) Traits::erase(m_items, first);
       emit rangeRemoved(first, last);
@@ -164,10 +181,12 @@ class ObservableContainer : public QObject {
       return 0;
     } else {
       assertOwnThread();
+      if (refusedAsNested()) return 0;
       QList<Key> keys;
       for (const Key& key : Traits::keys(entries))
         if (Traits::can_insert(m_items, key)) keys.append(key);
       if (keys.isEmpty()) return 0;
+      const Announcing announcing(*this);
       emit entriesAboutToBeAdded(keys);
       for (const Key& key : keys) Traits::insert(m_items, key, Traits::value(entries, key));
       emit entriesAdded(keys);
@@ -182,8 +201,10 @@ class ObservableContainer : public QObject {
       return 0;
     } else {
       assertOwnThread();
+      if (refusedAsNested()) return 0;
       const QList<Key> present = presentKeys(keys);
       if (present.isEmpty()) return 0;
+      const Announcing announcing(*this);
       emit entriesAboutToBeRemoved(present);
       for (const Key& key : present) Traits::erase(m_items, key);
       emit entriesRemoved(present);
@@ -197,9 +218,11 @@ class ObservableContainer : public QObject {
     C taken;
     if constexpr (batchable) {
       assertOwnThread();
+      if (refusedAsNested()) return taken;
       const QList<Key> present = presentKeys(keys);
       if (present.isEmpty()) return taken;
       for (const Key& key : present) Traits::insert(taken, key, Traits::value(m_items, key));
+      const Announcing announcing(*this);
       emit entriesAboutToBeRemoved(present);
       for (const Key& key : present) Traits::erase(m_items, key);
       emit entriesRemoved(present);
@@ -211,6 +234,8 @@ class ObservableContainer : public QObject {
   // and the new content are both empty, and no listener ever sees a container that is empty in between.
   void resetWith(C content) {
     assertOwnThread();
+    if (refusedAsNested()) return;
+    const Announcing announcing(*this);
     emit aboutToBeReset();
     m_items = std::move(content);
     emit resetCompleted();
@@ -219,7 +244,8 @@ class ObservableContainer : public QObject {
   // Removes every entry. An empty container announces nothing.
   bool clear() {
     assertOwnThread();
-    if (Traits::size(m_items) == 0) return false;
+    if (refusedAsNested() || Traits::size(m_items) == 0) return false;
+    const Announcing announcing(*this);
     emit aboutToBeCleared();
     m_items.clear();
     emit cleared();
@@ -249,6 +275,26 @@ class ObservableContainer : public QObject {
   rqt::signal<void()> resetCompleted;
 
  private:
+  // Marks the container as announcing for the length of one mutator, also when a receiver throws.
+  class Announcing {
+   public:
+    explicit Announcing(ObservableContainer& container) : m_container(container) { m_container.m_announcing = true; }
+    ~Announcing() { m_container.m_announcing = false; }
+    Announcing(const Announcing&) = delete;
+    Announcing& operator=(const Announcing&) = delete;
+
+   private:
+    ObservableContainer& m_container;
+  };
+
+  // True when the call has to be refused because a change of this container is being announced.
+  bool refusedAsNested() const {
+    Q_ASSERT_X(!m_announcing, "observable::ObservableContainer",
+               "a container must not be changed from a receiver of its own signals (queue the change, or make it after "
+               "the announcing call has returned)");
+    return m_announcing;
+  }
+
   // Batches name an entry by a key it does not hold yet, which a list (it has ranges) and a multi container (its
   // keys are numbered from the newest) cannot do.
   static constexpr bool batchable = Traits::order == Order::sorted || Traits::order == Order::unordered;
@@ -272,6 +318,7 @@ class ObservableContainer : public QObject {
   }
 
   C m_items;
+  bool m_announcing = false;
 };
 
 }  // namespace observable
