@@ -1,0 +1,3 @@
+# header:function | the split that would bring it to or under the limit (nothing is refactored by the CRAP run)
+container_model.hpp:observable::ContainerModelBase::connectSource | split into connectEntries (single add, remove, change), connectMoves, connectRanges, connectBatches and connectResets, each a run of connects (CC 2 to 4)
+observable_container.hpp:observable::ObservableContainer::presentKeys | one function per branch (presentKeysSorted with the std::set, presentKeysHashed with the QSet) behind a one-line if constexpr, CC 4 each, and a test of each branch's duplicate and absent keys to cover the 7 percent
