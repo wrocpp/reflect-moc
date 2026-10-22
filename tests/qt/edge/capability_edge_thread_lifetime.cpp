@@ -261,10 +261,10 @@ void destructors_run_inside_the_window() {
   for (const Seen& s : seen) CHECK(s.phase == Phase::window && s.rows == 3);
   fill();
   const T taken = source.takeMany({1, 2});
-  // takeMany copies each entry before it announces (the copy's temporary dies outside the window) and drops the
-  // original inside it: two destructors before the window and two in it.
-  CHECK(taken.size() == 2 && seen.size() == 4);
-  for (std::size_t i = 0; i < seen.size(); ++i) CHECK((seen[i].phase == Phase::window) == (i >= 2) && seen[i].rows == 3);
+  // takeMany copies each entry into the result before it announces, with no temporary to destroy (it used to copy through
+  // a by-value parameter, which left two destructors outside the window), and drops the originals inside it.
+  CHECK(taken.size() == 2 && seen.size() == 2);
+  for (const Seen& s : seen) CHECK(s.phase == Phase::window && s.rows == 3);
   g_echo = nullptr;
 }
 }  // namespace

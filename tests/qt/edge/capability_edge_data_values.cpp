@@ -67,10 +67,10 @@ void copy_budget(K a, K b, K c, int insertCopies, int removeCopies) {
   observable::ContainerTraits<C>::insert(entries, b, Counted{4});
   Counted::reset();
   CHECK(source.insertMany(entries) == 1);
-  CHECK(Counted::copies <= 2);  // one to take the value out of the argument, one into the container
+  CHECK(Counted::copies == 1);  // one, into the staging container; the commit moves it
   Counted::reset();
   const C taken = source.takeMany({b});
-  CHECK(taken.size() == 1 && Counted::copies <= 2);
+  CHECK(taken.size() == 1 && Counted::copies <= 1 + removeCopies);  // one into the result, then the erase
   C content;
   observable::ContainerTraits<C>::insert(content, c, Counted{5});
   Counted::reset();

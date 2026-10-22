@@ -18,6 +18,8 @@ struct BigSet {
   qsizetype entries = 0;
   QList<int> keys;
   void clear() { entries = 0; }
+  void insert(int key) { keys.append(key); }  // what a batch's staging and commit call on a set
+  void detach() {}
 };
 }  // namespace
 
