@@ -133,8 +133,8 @@ struct signal<void(A...), Owner> {
   using args_tuple = std::tuple<A...>;
 
   signal() : owner_(detail::take_owner<Owner>()) {
-    static_assert(detail::declares_member(Owner, "rqt_anchor_"),
-                  "rqt::signal needs RQT_OBJECT, first in the class, before any signal");
+    static_assert(detail::declares_member(Owner, "rqt_anchor_") || detail::derives_crtp(Owner),
+                  "rqt::signal needs RQT_OBJECT, first in the class, before any signal, or rqt::ObjectOf as a base");
   }
   signal(signal const&) = delete;
   signal& operator=(signal const&) = delete;

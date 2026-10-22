@@ -6,6 +6,7 @@
 #include "connect.hpp"
 #include "macros.hpp"
 #include "object.hpp"
+#include "object_of.hpp"
 #include "signal.hpp"
 
 #if __has_include(<QtQml/qqml.h>)
