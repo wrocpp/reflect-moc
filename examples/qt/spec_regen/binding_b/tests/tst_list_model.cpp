@@ -309,6 +309,23 @@ private slots:
         QCOMPARE(sizeAbout, 2);
         QCOMPARE(sizeTwin, 3);
     }
+
+    // Added after mutation testing (a mutant that left the key-to-row map fresh after an insert survived): a lookup after inserts
+    // before a key finds the key's new row.
+    [[= rqt::slot]] void at_4_8_theRowMapFollowsInsertions()
+    {
+        obs::Container<Letters> c(lettersOf({"a", "c", "e"}));
+        TestModel<Letters> model(c);
+        QAbstractItemModelTester tester(&model, kTesterMode);
+        QSignalSpy spy(&model, &QAbstractItemModel::dataChanged);
+        QVERIFY(c.replace("e", "1"));  // builds the row map: "e" is row 2
+        QCOMPARE(spy.takeLast().at(0).toModelIndex().row(), 2);
+        QVERIFY(c.insert("b", "x"));
+        QVERIFY(c.insert("d", "y"));
+        QVERIFY(c.replace("e", "2"));  // "e" is row 4 now
+        QCOMPARE(spy.takeLast().at(0).toModelIndex().row(), 4);
+        QCOMPARE(model.rowOf("e"), 4);
+    }
 };
 
 QTEST_GUILESS_MAIN(TstListModel)

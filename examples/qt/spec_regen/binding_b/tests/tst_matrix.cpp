@@ -530,6 +530,22 @@ private slots:
         QCOMPARE(log, (QStringList{"7-7", "5-5", "1-2"}));
         QVERIFY(mirrors(model, m));
     }
+
+    // Added after mutation testing (a mutant whose clear left the key map as it was survived: the map had never been built, so it
+    // was stale anyway): the map is built first, then cleared.
+    [[= rqt::slot]] void at_5_7_clearForgetsKeysThatWereLookedUp()
+    {
+        Mat m(kNaN);
+        m.addRow("r");
+        m.addColumn("c");
+        QCOMPARE(m.rowIndexOf("r"), 0);  // builds the lookup map
+        QCOMPARE(m.columnIndexOf("c"), 0);
+        m.clear();
+        QCOMPARE(m.rowIndexOf("r"), -1);
+        QCOMPARE(m.columnIndexOf("c"), -1);
+        QVERIFY(m.addRow("r"));
+        QCOMPARE(m.rowIndexOf("r"), 0);
+    }
 };
 
 QTEST_GUILESS_MAIN(TstMatrix)

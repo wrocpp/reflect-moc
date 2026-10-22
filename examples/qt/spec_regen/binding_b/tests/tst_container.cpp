@@ -432,6 +432,31 @@ private slots:
         QCOMPARE(m.size(), 1);
         QCOMPARE(mapRec.log.last(), QString("entriesRemoved([4,2])"));
     }
+
+    // Added after mutation testing (a mutant that announced a batch after its inserts survived): the "about" of a batch sees the old
+    // content and its twin the new one, for every batch operation.
+    [[= rqt::slot]] void at_3_13_theAboutOfABatchSeesTheOldContent()
+    {
+        using Source = obs::Container<QHash<QString, int>>;
+        Source c(QHash<QString, int>{{"present", 0}});
+        QObject ctx;
+        qsizetype atAbout = -1, atTwin = -1;
+        QObject::connect(&c, &Source::entriesAboutToBeAdded, &ctx, [&] { atAbout = c.size(); });
+        QObject::connect(&c, &Source::entriesAdded, &ctx, [&] { atTwin = c.size(); });
+        QCOMPARE(c.insertMany(QHash<QString, int>{{"a", 1}, {"b", 2}}), 2);
+        QCOMPARE(atAbout, 1);
+        QCOMPARE(atTwin, 3);
+
+        QObject::connect(&c, &Source::entriesAboutToBeRemoved, &ctx, [&] { atAbout = c.size(); });
+        QObject::connect(&c, &Source::entriesRemoved, &ctx, [&] { atTwin = c.size(); });
+        QCOMPARE(c.removeMany({"a", "b"}), 2);
+        QCOMPARE(atAbout, 3);
+        QCOMPARE(atTwin, 1);
+        c.insertMany(QHash<QString, int>{{"x", 1}});
+        QCOMPARE(c.takeMany({"x"}).size(), 1);
+        QCOMPARE(atAbout, 2);
+        QCOMPARE(atTwin, 1);
+    }
 };
 
 QTEST_GUILESS_MAIN(TstContainer)

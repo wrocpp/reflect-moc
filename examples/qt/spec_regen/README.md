@@ -34,6 +34,31 @@ connections and threads, QML, key types other than `int`, `quint32`, `qsizetype`
 acceptance tests and is not held to the CRAP and mutation rules of the hand-written examples; the binding B agent
 ran five hand-made mutants and one survived, which it killed with a new test (`at_3_6_replaceWritesBetweenTheAboutAndTheTwin`).
 
+## Mutation testing of the two bindings
+
+`scripts/mutate-observable-models.py --tree examples/qt/spec_regen/binding_a` (or `binding_b`) copies the binding to /tmp, builds its own
+CMake project, applies one mutant of `scripts/mutants_spec_regen.py` at a time (52 per binding: the about/twin order of the container and the
+matrix, the run order of batches, the Delta rules of the tracker, the rename and `setValues` rectangle rules, the NaN sentinel, `validIndex`,
+`contiguousRuns`, clear on empty, `resetWith`) and judges it by the binding's own ctest (the compile-fail entries only for the one constraint
+mutant). Every text is looked for before anything is built, and a mutant that does not compile is rewritten, not counted; a mutant that a
+`static_assert` of the tests refuses at compile time counts as killed.
+
+| | killed | survived | not viable |
+|---|---|---|---|
+| Binding A, first run | 45 (43 and 2 by a `static_assert`) | 7 | 0 |
+| Binding B, first run | 48 | 4 | 0 |
+| After the added tests | A 51 of 52, B 51 of 52 | 1 each, judged equivalent | 0 |
+
+The survivors of the first run were missing tests, and the generated code got them, so the generated trees now carry tests that the
+agents did not write: the about of a batch sees the old content (`at_3_13`, both), a row the container dropped reads empty and the row map
+follows insertions (`at_4_8` and `at_4_9` in A, `at_4_8` in B), a gap of rows ends a rectangle, a middle column removal keeps the values and
+a cell is written after its "about" (A; binding B already tested them), and clear forgets keys that were looked up (`at_5_7_clearForgets...`,
+both). The one survivor left in each binding is `validIndex` without its negative-index case: a negative signed index converts to a huge
+`std::uintmax_t`, which is never below a size, so the explicit case changes no result (equivalent; the reason is next to the mutant in
+`mutants_spec_regen.py`). The generated code is still pinned by the acceptance tests and is not held to the CRAP rule (see
+`docs/crap-observable-models.md` for the hand-written headers).
+
+
 ## Where the spec needed a decision
 
 Fifteen points in binding A. The reading each agent chose is the one that changes nothing and emits nothing
