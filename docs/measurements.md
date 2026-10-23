@@ -333,7 +333,7 @@ Reading, from x86_64 unless said:
   is 7 percent faster in B at 1,000 entries and 8 percent slower at 10,000. On the busy Mac it was 23 and 29 percent
   slower; that did not repeat on x86_64, and I did not look for the cause.
 - The matrix `setValues` rows are equal within 8 percent.
-- **A finding about the spec, not the bindings.** Section 8.1 asks for a lazy key-to-row map that every change marks
+- **A finding about the spec, not the bindings** (confirmed by the spec's author on 23 Oct 2026; both bindings were then changed by hand, see below). Section 8.1 asks for a lazy key-to-row map that every change marks
   stale and the next lookup rebuilds. A single removal after a change therefore costs a rebuild: 11 microseconds per
   removal at 1,000 hash entries and 193 microseconds at 10,000, in both bindings, linear in the entry count. The row
   index of `observable_models` costs 167 to 473 nanoseconds per change, at 100,000 hash entries and 10,000 map entries. The row order differs (the
@@ -343,6 +343,28 @@ Reading, from x86_64 unless said:
   binary is 20 percent larger in B on x86_64 (325,512 against 272,288 bytes) and 9 percent on the Mac. Compile of one translation unit:
   13.57 s for B against 7.97 s plus 4.86 s of moc for A on x86_64, so the totals are within 6 percent.
 - Not measured: a view on top, queued connections, MSVC, Clang.
+
+### After the hand changes (23 Oct 2026)
+
+Both list models now find a row by binary search over their sorted row keys, the matrix keeps its two key indexes in step
+instead of rebuilding them, and a batch removal is announced at the about notification (see the README of
+[`examples/qt/spec_regen`](../examples/qt/spec_regen/README.md)). The same `spec_bench/run.sh` on the x86_64 runner (the manual
+`bench` workflow on the branch, seven runs, load 1.1 to 1.4), in ns per change for drain and per call for `removeMany`:
+
+| container | entries | operation | A before | A after | B before | B after |
+|---|---|---|---|---|---|---|
+| QHash | 1,000 | drain | 11,226 | 224 | 11,654 | 236 |
+| QHash | 10,000 | drain | 193,274 | 320 | 197,616 | 346 |
+| QHash | 1,000 | removeMany-contiguous | 44,969 | 13,740 | 40,053 | 6,599 |
+| QHash | 10,000 | removeMany-contiguous | 454,473 | 14,612 | 455,011 | 7,114 |
+| QHash | 10,000 | removeMany-scattered | 487,240 | 42,563 | 488,066 | 34,751 |
+| QMap | 10,000 | removeMany-contiguous | 467,296 | 21,121 | 463,527 | 11,846 |
+| QMap | 10,000 | removeMany-scattered | 508,700 | 52,827 | 508,080 | 43,093 |
+
+A hash drain at 10,000 entries costs 320 and 346 ns per removal where it cost 193 and 198 microseconds, so it no longer
+grows with the entry count in a way a drain would notice; the batch removals fall by 3 to 32 times because each lookup is
+a binary search and nothing is rebuilt between the runs. The rows that do not touch the lookup (fill, replace, `insertMany`,
+`resetWith`, the matrix `setValues`) are within about 10 percent of the table above. The Mac was not re-measured.
 
 ## The keyed matrix: what one change costs (observable::ObservableMatrix against the spec's matrix)
 

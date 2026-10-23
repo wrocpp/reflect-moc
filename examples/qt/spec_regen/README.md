@@ -25,6 +25,19 @@ Hand changes after generation, all in `binding_b/CMakeLists.txt`: the default re
 points at this repository, `reflect_moc_qt` is not defined twice when the directory is added as a subdirectory,
 and the compile-fail tests take the `rqt_build_tree` lock the other tests of `tests/qt` use. Nothing else was edited.
 
+Hand changes after the author's answers (23 Oct 2026), the same in both bindings, each with a test that fails on the old code:
+
+1. A batch removal is announced at the `entriesAboutToBeRemoved` notification, while the container still holds the entries
+   (SPEC 8.3 had it after the erase; its author says that was a mistake). A view reads every row it is losing: `at_4_8` in A and
+   `at_4_10` in B, over a map and a hash, through `removeMany` and `takeMany`.
+2. The list model finds a row by binary search over its sorted row keys, not through a key-to-row map that every change marked
+   stale and the next lookup rebuilt (SPEC 8.1). `rowOf` is checked against the container after every step of a random mix.
+3. The matrix keeps its row and column indexes in step with the key lists on every change, instead of marking them stale
+   (SPEC 9). Both indexes are checked after every step of a random mix of every structural operation.
+
+The draining numbers are in [`docs/measurements.md`](../../../docs/measurements.md): a hash drain at 10,000 entries went from 193
+and 198 microseconds per removal to 320 and 346 nanoseconds. The agents' own text is unchanged (`notes`).
+
 Both trees were rebuilt by hand from a read-only mount before they were committed: 0 warnings at
 `-Wall -Wextra -Wpedantic`, all 17 ctest entries pass (acceptance tests AT-1.1 to AT-9.6, the six compile-fail
 twin and break pairs included). Binding A also builds with MSVC 19.44 and Qt 6.8.3 at `/W4 /permissive- /Zc:__cplusplus`
@@ -49,6 +62,7 @@ mutant). Every text is looked for before anything is built, and a mutant that do
 | Binding A, first run | 45 (43 and 2 by a `static_assert`) | 7 | 0 |
 | Binding B, first run | 48 | 4 | 0 |
 | After the added tests | A 51 of 52, B 51 of 52 | 1 each, judged equivalent | 0 |
+| After the hand changes of 23 Oct (A 53 mutants, B 54) | A 52 of 53, B 53 of 54 | 1 each, judged equivalent | 0 |
 
 The survivors of the first run were missing tests, and the generated code got them, so the generated trees now carry tests that the
 agents did not write: the about of a batch sees the old content (`at_3_13`, both), a row the container dropped reads empty and the row map
