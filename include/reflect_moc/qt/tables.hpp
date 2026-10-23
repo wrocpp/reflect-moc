@@ -23,12 +23,21 @@ namespace rqt {
 // meta-object data from one that does not.
 class object_tag {};
 
+// The class whose base clause names an rqt::ObjectOf or rqt::Gadget with no class argument. The default argument of the
+// base is evaluated where the template-id is written, in the base clause of the class being defined, where
+// current_class() is that class. B only makes the call dependent, so that a class template gets its own
+// instantiation (Box<int>) and not the template.
+template <class B>
+consteval meta::info deduced_class(meta::info c = meta::current_class()) {
+  return c;
+}
+
 // The base of a class that has no macro at all.
-template <class D, class B>
+template <class B, meta::info D>
 class ObjectOf;
 
 // The base of a gadget with no macro: a value class with a meta-object and no QObject in it.
-template <class D, class B>
+template <class B, meta::info D>
 class Gadget;
 
 template <class B>
@@ -758,8 +767,8 @@ consteval bool is_reflected_class(info t) {
 // The base that supplies the Qt superclass: for a mixin class rqt::Object<B>, for the others
 // the first direct base derived from QObject (a class with several bases takes the QObject one).
 consteval info super_type(info cls) {
-  if (info const crtp = crtp_base_of(cls); crtp != info{}) return meta::template_arguments_of(crtp)[1];  // ObjectOf<D, B>: B
-  if (info const gadget = gadget_base_of(cls); gadget != info{}) return meta::template_arguments_of(gadget)[1];  // Gadget<D, B>: B
+  if (info const crtp = crtp_base_of(cls); crtp != info{}) return meta::template_arguments_of(crtp)[0];  // ObjectOf<B, D>: B
+  if (info const gadget = gadget_base_of(cls); gadget != info{}) return meta::template_arguments_of(gadget)[0];  // Gadget<B, D>: B
   for (auto b : meta::bases_of(cls, unchecked)) {
     info const t = meta::type_of(b);
     if (t != (^^object_tag) && meta::is_base_of_type(^^QObject, t)) return t;

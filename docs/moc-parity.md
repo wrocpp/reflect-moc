@@ -21,10 +21,10 @@ The macro-free column is the spelling with no macro at all; 'same' means the ref
 |---|---|---|---|---|---|---|---|
 | A-01 | QObject class | `Q_OBJECT` | `RQT_OBJECT` | - | same | capability_differential_against_moc | must be the first line; a virtual base is not supported (G-05) |
 | A-02 | class info | `Q_CLASSINFO("k", "v")` | `RQT_CLASSINFO("k", "v")` | - | same | capability_differential_against_moc | |
-| A-03 | gadget | `Q_GADGET` | `struct P : rqt::Gadget<P, B>` | same | same | parity_gadget | the meta-object of a gadget and of a derived gadget equals moc's row for row; property code runs in the static meta-call (`PropertyAccessInStaticMetaCall`), so `readOnGadget`, `writeOnGadget`, `invokeOnGadget`, `QVariant::fromValue` and `QMetaType::metaObject` work with stock Qt. Not covered: signals (a gadget has none), enums in a gadget, QML registration of a value type |
+| A-03 | gadget | `Q_GADGET` | `struct P : rqt::Gadget<B>` | same | same | parity_gadget | the meta-object of a gadget and of a derived gadget equals moc's row for row; property code runs in the static meta-call (`PropertyAccessInStaticMetaCall`), so `readOnGadget`, `writeOnGadget`, `invokeOnGadget`, `QVariant::fromValue` and `QMetaType::metaObject` work with stock Qt. Not covered: signals (a gadget has none), enums in a gadget, QML registration of a value type |
 | A-04 | namespace meta-object | `Q_NAMESPACE`, `Q_ENUM_NS`, `Q_FLAG_NS` | - | - | unsupported | - | a namespace is never complete; `members_of(^^ns)` can enumerate it and an ADL hook can supply `qt_getEnumMetaObject` |
 | A-05 | class name for a template | - | `RQT_CLASS_NAME(n)` | - | same | capability_class_name_override | beyond moc: moc cannot read a class template |
-| A-06 | QObject class, no macro | `Q_OBJECT` | `class D : public rqt::ObjectOf<D, B>` | same | same | parity_macro_free_class | `ObjectOf` supplies the overrides, `staticMetaObject`, `tr` and the owner of data-member signals; B is `QObject`, a Qt class or a reflected class. The meta-object of a class and of a derived class equals moc's row for row. Enums, class info and the class name are `static constexpr` holders or annotations, see the macro audit below |
+| A-06 | QObject class, no macro | `Q_OBJECT` | `class D : public rqt::ObjectOf<B>` | same | same | parity_macro_free_class | `ObjectOf<B>` supplies the overrides, `staticMetaObject`, `tr` and the owner of data-member signals; B is `QObject` (`ObjectOf<>`), a Qt class or a reflected class. The class is not named: the default argument of the base is evaluated in the base clause, where `current_class()` is the class being defined, and it works for a class template, a nested class and a class in a namespace. The meta-object of a class and of a derived class equals moc's row for row. Enums, class info and the class name are `static constexpr` holders or annotations, see the macro audit below |
 | B-01 | signal | `signals: void f(int v);` | `[[=rqt::names("v")]] rqt::signal<void(int)> f;` | same | same | capability_differential_against_moc | a data member carries the name and the owner anchor (8 bytes per signal) |
 | B-02 | signal, static member | `signals:` | `static inline rqt::static_signal<void(int)> f;` | same | same | capability_differential_against_moc | beyond moc: no space in the object; `.from(this)` is required |
 | B-03 | signal, function form | `signals:` | `[[=rqt::signal_function]] void f(int v) { rqt::activate{this}(v); }` | - | same | parity_overloads_function_form | |
@@ -69,16 +69,16 @@ The macro-free column is the spelling with no macro at all; 'same' means the ref
 
 ## Macro audit
 
-Every macro the library offers, with its spelling that needs none. `ObjectOf<D, B>` is the base of a class with no macro;
+Every macro the library offers, with its spelling that needs none. `ObjectOf<B>` is the base of a class with no macro;
 `tests/qt/capability_macro_free_object.cpp` and `capability_macro_free_qwidget.cpp` use no `RQT_` or `Q_` macro at all.
 
 | macro | what it does | without the macro |
 |---|---|---|
-| `RQT_OBJECT`, `RQT_OBJECT_STATIC` | the overrides, `staticMetaObject`, `tr`, and the owner anchor of data-member signals | `rqt::ObjectOf<D, B>` as the base; it adds no data member, so a class is as large as with `RQT_OBJECT_STATIC` |
+| `RQT_OBJECT`, `RQT_OBJECT_STATIC` | the overrides, `staticMetaObject`, `tr`, and the owner anchor of data-member signals | `rqt::ObjectOf<B>` as the base (`ObjectOf<>`, `ObjectOf<QWidget>`, `ObjectOf<Counter>`; the class is deduced); it adds no data member, so a class is as large as with `RQT_OBJECT_STATIC` |
 | `RQT_PROPERTY(...)` | a property with the exact `Q_PROPERTY` text | `[[=rqt::property{...}]]` on the getter or the data member (already no macro) |
 | `RQT_ENUM(E)`, `RQT_FLAG(F)` | a `static constexpr` holder that names the enum | `static constexpr rqt::enum_decl x{^^E, false};` (the macro is only shorter) |
 | `RQT_CLASSINFO(k, v)` | a `static constexpr` holder | `static constexpr rqt::classinfo x{"k", "v"};` |
 | `RQT_CLASS_NAME(n)` | the name Qt reports | `[[=rqt::class_name{"n"}]]` on the class |
-| `Q_GADGET` | the meta-object of a value class | `rqt::Gadget<D, B>` as the base (B is `void` or another gadget) |
-| `RQT_SELF` | the class, inside its own member | not used by `ObjectOf`; the class is a template argument |
+| `Q_GADGET` | the meta-object of a value class | `rqt::Gadget<B>` as the base (`Gadget<>`, or `Gadget<Point>` for a derived gadget; B is `void` or another gadget) |
+| `RQT_SELF` | the class, inside its own member | not used by `ObjectOf`; the class is the deduced second template argument |
 | `emit`, `signals:`, `slots:` | Qt's keywords, empty macros | `sig(args)` for a data member, `rqt::activate{this}(args)` in a function signal, `[[=rqt::slot]]` |

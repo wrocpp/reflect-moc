@@ -57,26 +57,33 @@ class Sensor : public QObject {
   `capability_static_metaobject_one_line`). The meta-object equals the one moc generates for the same
   class (`capability_differential_against_moc`).
 
-## No macro at all: `rqt::ObjectOf<D, B>`
+## No macro at all: `rqt::ObjectOf<B>`
 
 ```cpp
-class Counter : public rqt::ObjectOf<Counter> {                 // a QObject
+class Counter : public rqt::ObjectOf<> {                        // a QObject
  public:
-  explicit Counter(QObject* parent = nullptr) : rqt::ObjectOf<Counter>(parent) {}
+  using ObjectOf::ObjectOf;                                     // the base's constructors, parent included
   [[= rqt::property{.write = "setValue", .notify = "valueChanged"}]] int value() const { return value_; }
   [[= rqt::slot]] void setValue(int v) { value_ = v; valueChanged(v); }
   rqt::signal<void(int)> valueChanged;                          // a data member, no anchor and no bind()
   ...
 };
-class Scaled : public rqt::ObjectOf<Scaled, Counter> {};         // a reflected class as the base
-class Panel : public rqt::ObjectOf<Panel, QWidget> {};          // a Qt class as the base
+class Scaled : public rqt::ObjectOf<Counter> {};                // a reflected class as the base
+class Panel : public rqt::ObjectOf<QWidget> {};                 // a Qt class as the base
+struct Point : rqt::Gadget<> {};                                // a value class with a meta-object
 ```
 
 The base supplies what `Q_OBJECT` declares (`metaObject`, `qt_metacast`, `qt_metacall`, `staticMetaObject`, `tr`) as
-overrides that name `D`, and publishes the owner for the `rqt::signal` members, so nothing repeats the class name and
-the class has no hidden data member. `qobject_cast`, pointer-to-member connect and QML see an ordinary `Q_OBJECT` class.
-The class name is a template argument: a class template works as well. The test against moc is
-`tests/qt/parity/parity_macro_free_class.cpp`; the macro audit is in `docs/moc-parity.md`.
+overrides, and publishes the owner for the `rqt::signal` members, so the class has no hidden data member. `qobject_cast`,
+pointer-to-member connect and QML see an ordinary `Q_OBJECT` class.
+
+The class is never named. The second template parameter of the base is the class itself, and its default argument is
+`current_class()`, evaluated where the base is written, in the base clause of the class being defined. That works for a
+class in a namespace, a nested class and a class template (`Box<int>` gets its own meta-object); a name for a base
+spelled where no class is being defined (a namespace-scope alias) does not compile. A class derived from `ObjectOf<B>`
+needs a constructor that passes its arguments on: `using ObjectOf::ObjectOf;`, or `ObjectOf(parent)` in a mem-initializer
+(inside a class template the base is dependent: `using rqt::ObjectOf<>::ObjectOf;`).
+The test against moc is `tests/qt/parity/parity_macro_free_class.cpp`; the macro audit is in `docs/moc-parity.md`.
 
 ## Signals that take no space
 

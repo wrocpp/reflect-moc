@@ -14,13 +14,13 @@
 
 namespace viarqt {
 
-class Gauge : public rqt::ObjectOf<Gauge> {
+class Gauge : public rqt::ObjectOf<> {
  public:
   enum class Mode { off, on };
   static constexpr rqt::enum_decl mode_enum{^^Mode, false};
   static constexpr rqt::classinfo author{"author", "wro.cpp"};
 
-  explicit Gauge(QObject* parent = nullptr) : rqt::ObjectOf<Gauge>(parent) {}
+  explicit Gauge(QObject* parent = nullptr) : ObjectOf(parent) {}
   [[= rqt::property{.write = "setLevel", .notify = "levelChanged"}]] int level() const { return level_; }
   [[= rqt::property{.write = "setMode"}]] Mode mode() const { return mode_; }
   void setMode(Mode m) { mode_ = m; }
@@ -39,9 +39,9 @@ class Gauge : public rqt::ObjectOf<Gauge> {
   Mode mode_ = Mode::off;
 };
 
-class FineGauge : public rqt::ObjectOf<FineGauge, Gauge> {
+class FineGauge : public rqt::ObjectOf<Gauge> {
  public:
-  explicit FineGauge(QObject* parent = nullptr) : rqt::ObjectOf<FineGauge, Gauge>(parent) {}
+  using ObjectOf::ObjectOf;
   [[= rqt::property{.write = "setUnit", .notify = "unitChanged"}]] QString unit() const { return unit_; }
 
   [[= rqt::slot]] void setUnit(const QString& u) {

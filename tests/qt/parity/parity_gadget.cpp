@@ -14,7 +14,7 @@
 
 namespace viarqt {
 
-struct Point : rqt::Gadget<Point> {
+struct Point : rqt::Gadget<> {
   [[= rqt::property{}]] int x = 0;
   [[= rqt::property{.write = "setLabel"}]] QString label() const { return label_; }
   void setLabel(const QString& l) { label_ = l; }
@@ -24,7 +24,7 @@ struct Point : rqt::Gadget<Point> {
   QString label_;
 };
 
-struct Point3 : rqt::Gadget<Point3, Point> {
+struct Point3 : rqt::Gadget<Point> {
   [[= rqt::property{}]] int z = 0;
   [[= rqt::invokable]] int sum() const { return x + z; }
 };
