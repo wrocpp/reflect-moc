@@ -206,7 +206,13 @@ void property_call(D* t, QMetaObject::Call c, int id, void** a) {
 
 template <class D>
 void static_metacall(QObject* o, QMetaObject::Call c, int id, void** a) {
-  auto* t = static_cast<D*>(o);
+  // Qt hands a gadget's address over as a QObject*: it is not one, so the pointer is reinterpreted.
+  auto* t = [o] {
+    if constexpr (std::is_base_of_v<QObject, D>)
+      return static_cast<D*>(o);
+    else
+      return reinterpret_cast<D*>(o);
+  }();
   switch (c) {
     case QMetaObject::InvokeMetaMethod: invoke_method<D>(t, id, a); break;
     case QMetaObject::IndexOfMethod: index_of_method<D>(a); break;

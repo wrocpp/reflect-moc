@@ -21,7 +21,7 @@ The macro-free column is the spelling with no macro at all; 'same' means the ref
 |---|---|---|---|---|---|---|---|
 | A-01 | QObject class | `Q_OBJECT` | `RQT_OBJECT` | - | same | capability_differential_against_moc | must be the first line; a virtual base is not supported (G-05) |
 | A-02 | class info | `Q_CLASSINFO("k", "v")` | `RQT_CLASSINFO("k", "v")` | - | same | capability_differential_against_moc | |
-| A-03 | gadget | `Q_GADGET` | - | - | unsupported | - | `metaObjectData` is fed a QObject-shaped flag set and the dispatch assumes a QObject; an `rqt::Gadget<D>` base would carry it |
+| A-03 | gadget | `Q_GADGET` | `struct P : rqt::Gadget<P, B>` | same | same | parity_gadget | the meta-object of a gadget and of a derived gadget equals moc's row for row; property code runs in the static meta-call (`PropertyAccessInStaticMetaCall`), so `readOnGadget`, `writeOnGadget`, `invokeOnGadget`, `QVariant::fromValue` and `QMetaType::metaObject` work with stock Qt. Not covered: signals (a gadget has none), enums in a gadget, QML registration of a value type |
 | A-04 | namespace meta-object | `Q_NAMESPACE`, `Q_ENUM_NS`, `Q_FLAG_NS` | - | - | unsupported | - | a namespace is never complete; `members_of(^^ns)` can enumerate it and an ADL hook can supply `qt_getEnumMetaObject` |
 | A-05 | class name for a template | - | `RQT_CLASS_NAME(n)` | - | same | capability_class_name_override | beyond moc: moc cannot read a class template |
 | A-06 | QObject class, no macro | `Q_OBJECT` | `class D : public rqt::ObjectOf<D, B>` | same | same | parity_macro_free_class | `ObjectOf` supplies the overrides, `staticMetaObject`, `tr` and the owner of data-member signals; B is `QObject`, a Qt class or a reflected class. The meta-object of a class and of a derived class equals moc's row for row. Enums, class info and the class name are `static constexpr` holders or annotations, see the macro audit below |
@@ -79,5 +79,6 @@ Every macro the library offers, with its spelling that needs none. `ObjectOf<D, 
 | `RQT_ENUM(E)`, `RQT_FLAG(F)` | a `static constexpr` holder that names the enum | `static constexpr rqt::enum_decl x{^^E, false};` (the macro is only shorter) |
 | `RQT_CLASSINFO(k, v)` | a `static constexpr` holder | `static constexpr rqt::classinfo x{"k", "v"};` |
 | `RQT_CLASS_NAME(n)` | the name Qt reports | `[[=rqt::class_name{"n"}]]` on the class |
+| `Q_GADGET` | the meta-object of a value class | `rqt::Gadget<D, B>` as the base (B is `void` or another gadget) |
 | `RQT_SELF` | the class, inside its own member | not used by `ObjectOf`; the class is a template argument |
 | `emit`, `signals:`, `slots:` | Qt's keywords, empty macros | `sig(args)` for a data member, `rqt::activate{this}(args)` in a function signal, `[[=rqt::slot]]` |

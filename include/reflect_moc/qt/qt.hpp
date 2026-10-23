@@ -4,6 +4,7 @@
 
 #include "annotations.hpp"
 #include "connect.hpp"
+#include "gadget.hpp"
 #include "macros.hpp"
 #include "object.hpp"
 #include "object_of.hpp"
