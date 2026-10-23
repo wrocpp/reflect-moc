@@ -76,7 +76,9 @@ public:
 
         if constexpr (AssociativeContainer<C>) {
             QObject::connect(&source, &Source::entriesAdded, this, [this](const QList<Key> & keys) { insertBatch(keys); });
-            QObject::connect(&source, &Source::entriesRemoved, this, [this](const QList<Key> & keys) { removeBatch(keys); });
+            // A removal is announced at the "about" notification, while the container still holds the entries, so a view
+            // can read the rows it is losing (SPEC 8.3 as its author meant it; a hand change, see the README).
+            QObject::connect(&source, &Source::entriesAboutToBeRemoved, this, [this](const QList<Key> & keys) { removeBatch(keys); });
         }
     }
 
@@ -97,7 +99,7 @@ public:
             return {};
         const Key key = keyAt(index.row());
         const Value * value = source_->find(key);
-        if (value == nullptr)  // a row inside a batch removal cycle: the container already dropped it
+        if (value == nullptr)
             return {};
         return valueData(key, *value, role);
     }
@@ -184,7 +186,8 @@ private:
         }
     }
 
-    // One remove cycle per run of current rows, DESCENDING: the rows of the runs still to do do not move.
+    // One remove cycle per run of current rows, DESCENDING: the rows of the runs still to do do not move. It runs at the
+    // "about" notification, so the container still holds every entry of every run.
     void removeBatch(const QList<Key> & keys)
     {
         std::vector<int> positions;

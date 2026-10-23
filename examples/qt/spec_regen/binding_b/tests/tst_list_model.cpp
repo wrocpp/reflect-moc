@@ -114,6 +114,28 @@ Letters lettersOf(const QStringList & keys)
     return m;
 }
 
+
+// Removes "b", "c" and "e" from "abcdef" (value: the upper-case letter) in one batch and reads every row a receiver of
+// rowsAboutToBeRemoved is told about.
+template <class C>
+bool readsEveryDoomedRow(bool take)
+{
+    C content;
+    for (const QString & k : QStringList{"a", "b", "c", "d", "e", "f"})
+        content.insert(k, k.toUpper());
+    obs::Container<C> c(content);
+    TestModel<C> model(c);
+    QAbstractItemModelTester tester(&model, kTesterMode);
+    QStringList read;
+    QObject::connect(&model, &QAbstractItemModel::rowsAboutToBeRemoved, &model, [&](const QModelIndex &, int first, int last) {
+        for (int row = first; row <= last; ++row)
+            read.append(model.data(model.index(row, 0), Qt::DisplayRole).toString());
+    });
+    const QList<QString> doomed{"b", "c", "e"};
+    const qsizetype removed = take ? c.takeMany(doomed).size() : c.removeMany(doomed);
+    read.sort();
+    return removed == 3 && read == QStringList{"B", "C", "E"} && model.rowCount() == 3;
+}
 }  // namespace
 
 class TstListModel : public QObject {
@@ -280,18 +302,18 @@ private slots:
         QCOMPARE(displayedRows(model), (QStringList{"50", "30", "20", "10", "0"}));
     }
 
-    [[= rqt::slot]] void capability_aRowInsideABatchRemovalCycleReadsAsInvalid()
+    [[= rqt::slot]] void capability_aRowInsideABatchRemovalCycleReadsItsValue()
     {
         obs::Container<Letters> c(lettersOf({"a", "b", "c"}));
         TestModel<Letters> model(c);
         QAbstractItemModelTester tester(&model, kTesterMode);
-        bool valid = true;
+        QString read;
         QObject ctx;
         QObject::connect(&model, &QAbstractItemModel::rowsAboutToBeRemoved, &ctx, [&](const QModelIndex &, int f, int) {
-            valid = model.data(model.index(f, 0), Qt::DisplayRole).isValid();
+            read = model.data(model.index(f, 0), Qt::DisplayRole).toString();
         });
         c.removeMany({"b"});
-        QVERIFY(!valid);
+        QCOMPARE(read, QString("B"));
         QCOMPARE(displayedRows(model), (QStringList{"A", "C"}));
     }
 
@@ -308,6 +330,16 @@ private slots:
         c.append(3);
         QCOMPARE(sizeAbout, 2);
         QCOMPARE(sizeTwin, 3);
+    }
+
+    // 8.3 as the spec's author meant it: a batch removal is announced while the container still holds the entries, so a
+    // view reads every row it is losing, in a map and in a hash, through removeMany and through takeMany.
+    [[= rqt::slot]] void at_4_10_aBatchRemovalLetsAViewReadTheRowsItLoses()
+    {
+        QVERIFY(readsEveryDoomedRow<Letters>(false));
+        QVERIFY(readsEveryDoomedRow<Letters>(true));
+        QVERIFY((readsEveryDoomedRow<QHash<QString, QString>>(false)));
+        QVERIFY((readsEveryDoomedRow<QHash<QString, QString>>(true)));
     }
 
     // Added after mutation testing (a mutant that left the key-to-row map fresh after an insert survived): a lookup after inserts

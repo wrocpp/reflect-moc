@@ -161,7 +161,9 @@ private:
         if constexpr (AssociativeContainer<C>) {
             connect(s, &CS::entriesAdded, this,
                     [this](const QList<QVariant> & keys) { onEntriesAdded(detail::unboxAll<Key>(keys)); });
-            connect(s, &CS::entriesRemoved, this,
+            // A removal is announced at the "about" notification, while the container still holds the entries, so a view
+            // can read the rows it is losing (SPEC 8.3 as its author meant it; a hand change, see the README).
+            connect(s, &CS::entriesAboutToBeRemoved, this,
                     [this](const QList<QVariant> & keys) { onEntriesRemoved(detail::unboxAll<Key>(keys)); });
         }
     }
@@ -204,8 +206,8 @@ private:
         }
     }
 
-    // 8.3: the rows of the removed keys, ascending, split into runs, announced
-    // from the bottom run up.
+    // 8.3: the rows of the keys about to be removed, ascending, split into runs,
+    // announced from the bottom run up while the container still holds them.
     void onEntriesRemoved(const QList<Key> & removed)
     {
         if constexpr (AssociativeContainer<C>) {

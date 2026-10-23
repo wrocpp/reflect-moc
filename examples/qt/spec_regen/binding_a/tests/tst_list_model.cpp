@@ -9,6 +9,7 @@
 #include <QString>
 #include <QtTest>
 
+#include <algorithm>
 #include <type_traits>
 
 namespace {
@@ -142,6 +143,28 @@ StringIntMap letters(const QString & keys)
     return m;
 }
 
+
+// Removes "b", "c" and "e" from "abcdef" (value: the letter's code) in one batch and reads every row a receiver of
+// rowsAboutToBeRemoved is told about.
+template <class C>
+bool readsEveryDoomedRow(bool take)
+{
+    C content;
+    for (const QChar ch : QStringLiteral("abcdef"))
+        content.insert(QString(ch), ch.unicode());
+    obs::Container<C> c(content);
+    TestModel<C> model(c);
+    QAbstractItemModelTester tester(&model, kQtTest);
+    QList<int> read;
+    QObject::connect(&model, &QAbstractItemModel::rowsAboutToBeRemoved, &model, [&](const QModelIndex &, int first, int last) {
+        for (int row = first; row <= last; ++row)
+            read.append(model.data(model.index(row, 0), Qt::DisplayRole).toInt());
+    });
+    const QList<QString> doomed{"b", "c", "e"};
+    const qsizetype removed = take ? c.takeMany(doomed).size() : c.removeMany(doomed);
+    std::sort(read.begin(), read.end());
+    return removed == 3 && read == QList<int>{'b', 'c', 'e'} && model.rowCount() == 3;
+}
 }  // namespace
 
 class tst_list_model : public QObject {
@@ -302,24 +325,14 @@ private slots:
         QCOMPARE(rowKeys(model), QStringLiteral("c"));
     }
 
-    // Added after mutation testing (a mutant that read the value of a dropped row survived): while a removal run is announced the
-    // container has already dropped the entries, and the model answers an invalid variant for each doomed row.
-    void at_4_8_aRowTheContainerAlreadyDroppedReadsEmpty()
+    // 8.3 as the spec's author meant it: a batch removal is announced while the container still holds the entries, so a
+    // view reads every row it is losing, in a map and in a hash, through removeMany and through takeMany.
+    void at_4_8_aBatchRemovalLetsAViewReadTheRowsItLoses()
     {
-        LetterContainer c(letters("abcdef"));
-        TestModel<StringIntMap> model(c);
-        QAbstractItemModelTester tester(&model, kQtTest);
-        int doomedRows = 0;
-        int invalidReads = 0;
-        connect(&model, &QAbstractItemModel::rowsAboutToBeRemoved, this, [&](const QModelIndex &, int first, int last) {
-            for (int row = first; row <= last; ++row) {
-                ++doomedRows;
-                invalidReads += model.data(model.index(row, 0), Qt::DisplayRole).isValid() ? 0 : 1;
-            }
-        });
-        QCOMPARE(c.removeMany(QList<QString>{"b", "c", "e"}), 3);
-        QCOMPARE(doomedRows, 3);
-        QCOMPARE(invalidReads, 3);
+        QVERIFY(readsEveryDoomedRow<StringIntMap>(false));
+        QVERIFY(readsEveryDoomedRow<StringIntMap>(true));
+        QVERIFY((readsEveryDoomedRow<QHash<QString, int>>(false)));
+        QVERIFY((readsEveryDoomedRow<QHash<QString, int>>(true)));
     }
 
     // Added after mutation testing (a mutant that left the key-to-row map fresh after an insert survived): a lookup after inserts
