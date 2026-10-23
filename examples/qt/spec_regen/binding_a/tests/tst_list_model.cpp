@@ -10,6 +10,7 @@
 #include <QtTest>
 
 #include <algorithm>
+#include <random>
 #include <type_traits>
 
 namespace {
@@ -165,6 +166,54 @@ bool readsEveryDoomedRow(bool take)
     std::sort(read.begin(), read.end());
     return removed == 3 && read == QList<int>{'b', 'c', 'e'} && model.rowCount() == 3;
 }
+
+// After every step of a random mix of inserts, removals, batches, replaces and resets, rowOf agrees with the sorted keys of
+// the container for every key of a small universe, present or not.
+template <class C>
+bool rowOfAgreesWithTheRows(unsigned seed)
+{
+    obs::Container<C> c{C{}};
+    TestModel<C> model(c);
+    QAbstractItemModelTester tester(&model, kQtTest);
+    constexpr int kUniverse = 24;
+    constexpr int kSteps = 400;
+    std::mt19937 rng(seed);
+    const auto key = [&] { return QString::number(static_cast<int>(rng() % kUniverse) + 100); };
+    for (int step = 0; step < kSteps; ++step) {
+        switch (rng() % 6) {
+        case 0: c.insert(key(), step); break;
+        case 1: c.remove(key()); break;
+        case 2: c.replace(key(), step); break;
+        case 3: {
+            C extra;
+            for (int i = 0; i < 3; ++i)
+                extra.insert(key(), step);
+            c.insertMany(extra);
+            break;
+        }
+        case 4: c.removeMany(QList<QString>{key(), key(), key()}); break;
+        default:
+            if (rng() % 8 == 0)
+                c.clear();
+            break;
+        }
+        QList<QString> sorted;
+        for (int k = 0; k < kUniverse; ++k)
+            if (c.contains(QString::number(k + 100)))
+                sorted.append(QString::number(k + 100));
+        std::sort(sorted.begin(), sorted.end());
+        for (int k = 0; k < kUniverse; ++k) {
+            const QString name = QString::number(k + 100);
+            const int expected = sorted.indexOf(name);
+            if (model.rowOf(name) != expected)
+                return false;
+        }
+        if (model.rowCount() != sorted.size())
+            return false;
+    }
+    return true;
+}
+
 }  // namespace
 
 class tst_list_model : public QObject {
@@ -333,6 +382,16 @@ private slots:
         QVERIFY(readsEveryDoomedRow<StringIntMap>(true));
         QVERIFY((readsEveryDoomedRow<QHash<QString, int>>(false)));
         QVERIFY((readsEveryDoomedRow<QHash<QString, int>>(true)));
+    }
+
+    // The row lookup is a binary search over the sorted row keys: it agrees with the container after every step of a random
+    // mix, in a map and in a hash (whose rows are sorted by the same Less).
+    void at_4_10_theRowLookupAgreesWithTheRowsAfterEveryStep()
+    {
+        for (unsigned seed = 1; seed <= 5; ++seed) {
+            QVERIFY(rowOfAgreesWithTheRows<StringIntMap>(seed));
+            QVERIFY((rowOfAgreesWithTheRows<QHash<QString, int>>(seed)));
+        }
     }
 
     // Added after mutation testing (a mutant that left the key-to-row map fresh after an insert survived): a lookup after inserts

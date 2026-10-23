@@ -60,14 +60,10 @@ public:
         if constexpr (SequentialContainer<C>) {
             return key >= 0 && key < m_count ? static_cast<int>(key) : -1;
         } else {
-            if (m_stale) {
-                m_rowOf.clear();
-                for (std::size_t i = 0; i < m_keys.size(); ++i)
-                    m_rowOf.insert(m_keys[i], static_cast<int>(i));
-                m_stale = false;
-            }
-            const auto it = m_rowOf.constFind(key);
-            return it == m_rowOf.constEnd() ? -1 : it.value();
+            // A binary search in the sorted row keys: O(log n), and nothing to rebuild after a change (a hand change,
+            // see the README).
+            const auto it = std::lower_bound(m_keys.begin(), m_keys.end(), key, Less{});
+            return it != m_keys.end() && !Less{}(key, *it) ? static_cast<int>(it - m_keys.begin()) : -1;
         }
     }
 
@@ -99,7 +95,6 @@ private:
             m_keys.clear();
             detail::forEachKey(m_source.data(), [this](const Key & k) { m_keys.push_back(k); });
             std::stable_sort(m_keys.begin(), m_keys.end(), Less{});
-            m_stale = true;
         }
     }
 
@@ -109,7 +104,6 @@ private:
             m_count = 0;
         } else {
             m_keys.clear();
-            m_stale = true;
         }
     }
 
@@ -126,7 +120,6 @@ private:
                 ++m_count;
             } else {
                 m_keys.insert(m_keys.begin() + m_pending, detail::unbox<Key>(v));
-                m_stale = true;
             }
             endInsertRows();
         });
@@ -139,7 +132,6 @@ private:
                 --m_count;
             } else {
                 m_keys.erase(m_keys.begin() + m_pending);
-                m_stale = true;
             }
             endRemoveRows();
         });
@@ -200,7 +192,6 @@ private:
             for (const auto & [first, last] : obs::contiguousRuns(positions.begin(), positions.end())) {
                 beginInsertRows({}, first, last);
                 m_keys.insert(m_keys.begin() + first, merged.begin() + first, merged.begin() + last + 1);
-                m_stale = true;
                 endInsertRows();
             }
         }
@@ -223,7 +214,6 @@ private:
             for (auto run = runs.rbegin(); run != runs.rend(); ++run) {
                 beginRemoveRows({}, run->first, run->second);
                 m_keys.erase(m_keys.begin() + run->first, m_keys.begin() + run->second + 1);
-                m_stale = true;
                 endRemoveRows();
             }
         }
@@ -233,8 +223,6 @@ private:
     int m_count = 0;                 // sequential source: the rows are the indices
     int m_pending = 0;               // the row between an "about" and its twin
     std::vector<Key> m_keys;         // associative source: the sorted row keys
-    mutable QHash<Key, int> m_rowOf; // lazy key -> row map
-    mutable bool m_stale = true;
 };
 
 }  // namespace obs

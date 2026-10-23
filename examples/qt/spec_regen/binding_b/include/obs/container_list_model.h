@@ -41,7 +41,6 @@ public:
                 ++count_;
             } else {
                 rows_.insert(rows_.begin() + insertionRow(key), key);
-                mapStale_ = true;
             }
             endInsertRows();
         });
@@ -54,7 +53,6 @@ public:
                 --count_;
             } else {
                 rows_.erase(rows_.begin() + rowOf(key));
-                mapStale_ = true;
             }
             endRemoveRows();
         });
@@ -118,13 +116,10 @@ public:
         if constexpr (SequentialContainer<C>) {
             return key >= 0 && key < count_ ? static_cast<int>(key) : -1;
         } else {
-            if (mapStale_) {
-                rowMap_.clear();
-                for (std::size_t i = 0; i < rows_.size(); ++i)
-                    rowMap_.insert(rows_[i], static_cast<int>(i));
-                mapStale_ = false;
-            }
-            return rowMap_.value(key, -1);
+            // A binary search in the sorted row keys: O(log n), and nothing to rebuild after a change (a hand change,
+            // see the README).
+            const auto it = std::lower_bound(rows_.begin(), rows_.end(), key, less_);
+            return it != rows_.end() && !less_(key, *it) ? static_cast<int>(it - rows_.begin()) : -1;
         }
     }
 
@@ -145,7 +140,6 @@ private:
     {
         count_ = 0;
         rows_.clear();
-        mapStale_ = true;
     }
 
     void rebuild()
@@ -181,7 +175,6 @@ private:
         for (const auto & [first, last] : contiguousRuns(positions.begin(), positions.end())) {
             beginInsertRows({}, first, last);
             rows_.insert(rows_.begin() + first, merged.begin() + first, merged.begin() + last + 1);
-            mapStale_ = true;
             endInsertRows();
         }
     }
@@ -199,7 +192,6 @@ private:
         for (auto run = runs.rbegin(); run != runs.rend(); ++run) {
             beginRemoveRows({}, run->first, run->second);
             rows_.erase(rows_.begin() + run->first, rows_.begin() + run->second + 1);
-            mapStale_ = true;
             endRemoveRows();
         }
     }
@@ -208,8 +200,6 @@ private:
     [[no_unique_address]] Less less_{};
     int count_ = 0;                  // sequential source only
     std::vector<Key> rows_;          // associative source only: the keys, sorted by Less
-    mutable QHash<Key, int> rowMap_; // the lazy key to row map, rebuilt on the first lookup after a change
-    mutable bool mapStale_ = true;
 };
 
 }  // namespace obs
