@@ -9,6 +9,7 @@
 #include <reflect_moc/qt/qt.hpp>
 
 #include <cmath>
+#include <random>
 #include <limits>
 
 namespace {
@@ -112,6 +113,49 @@ bool mirrors(const obs::MatrixTableModel<Mat> & model, const Mat & m)
     for (int c = 0; c < model.columnCount(); ++c)
         if (model.headerData(c, Qt::Horizontal).toString() != m.columnKeys()[c])
             return false;
+    return true;
+}
+
+
+// After every step of a random mix of appends, removals (single and batch), renames and clears, rowIndexOf and
+// columnIndexOf agree with the key lists for every name of a small universe, present or not.
+inline bool matrixIndexesAgree(unsigned seed)
+{
+    constexpr int kUniverse = 12;
+    constexpr int kSteps = 600;
+    Mat m(0.0);
+    std::mt19937 rng(seed);
+    const auto name = [&](char prefix) { return QString(prefix) + QString::number(static_cast<int>(rng() % kUniverse)); };
+    const auto names = [&](char prefix) {
+        QList<QString> out;
+        for (int i = 0; i < 3; ++i)
+            out.append(name(prefix));
+        return out;
+    };
+    for (int step = 0; step < kSteps; ++step) {
+        switch (rng() % 11) {
+        case 0: m.addRow(name('r')); break;
+        case 1: m.addColumn(name('c')); break;
+        case 2: m.addRows(names('r')); break;
+        case 3: m.addColumns(names('c')); break;
+        case 4: m.removeRow(name('r')); break;
+        case 5: m.removeColumn(name('c')); break;
+        case 6: m.removeRows(names('r')); break;
+        case 7: m.removeColumns(names('c')); break;
+        case 8: m.renameRow(name('r'), name('r')); break;
+        case 9: m.renameColumn(name('c'), name('c')); break;
+        default:
+            if (rng() % 10 == 0)
+                m.clear();
+            break;
+        }
+        for (int k = 0; k < kUniverse; ++k) {
+            const QString r = QStringLiteral("r") + QString::number(k);
+            const QString c = QStringLiteral("c") + QString::number(k);
+            if (m.rowIndexOf(r) != m.rowKeys().indexOf(r) || m.columnIndexOf(c) != m.columnKeys().indexOf(c))
+                return false;
+        }
+    }
     return true;
 }
 
@@ -545,6 +589,13 @@ private slots:
         QCOMPARE(m.columnIndexOf("c"), -1);
         QVERIFY(m.addRow("r"));
         QCOMPARE(m.rowIndexOf("r"), 0);
+    }
+
+    // The row and column indexes are kept in step with the key lists on every change, so a lookup never rebuilds them.
+    [[= rqt::slot]] void capability_theKeyIndexesAgreeWithTheKeyListsAfterEveryStep()
+    {
+        for (unsigned seed = 1; seed <= 8; ++seed)
+            QVERIFY(matrixIndexesAgree(seed));
     }
 };
 
