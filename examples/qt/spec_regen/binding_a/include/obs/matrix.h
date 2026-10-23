@@ -39,19 +39,11 @@ public:
 
     qsizetype rowIndexOf(const RowKey & key) const
     {
-        if (m_rowsStale) {
-            rebuildIndex(m_rowIndex, m_rowKeys);
-            m_rowsStale = false;
-        }
         return m_rowIndex.value(key, -1);
     }
 
     qsizetype columnIndexOf(const ColKey & key) const
     {
-        if (m_colsStale) {
-            rebuildIndex(m_colIndex, m_colKeys);
-            m_colsStale = false;
-        }
         return m_colIndex.value(key, -1);
     }
 
@@ -188,7 +180,8 @@ public:
             return false;
         emit rowAboutToBeRenamed(detail::box(from), detail::box(to), index);
         m_rowKeys[index] = to;
-        m_rowsStale = true;
+        m_rowIndex.remove(from);
+        m_rowIndex.insert(to, index);
         emit rowRenamed(detail::box(from), detail::box(to), index);
         return true;
     }
@@ -204,7 +197,8 @@ public:
             return false;
         emit columnAboutToBeRenamed(detail::box(from), detail::box(to), index);
         m_colKeys[index] = to;
-        m_colsStale = true;
+        m_colIndex.remove(from);
+        m_colIndex.insert(to, index);
         emit columnRenamed(detail::box(from), detail::box(to), index);
         return true;
     }
@@ -283,18 +277,34 @@ public:
         m_rowKeys.clear();
         m_colKeys.clear();
         m_values.clear();
-        m_rowsStale = true;
-        m_colsStale = true;
+        m_rowIndex.clear();
+        m_colIndex.clear();
         emit cleared();
     }
 
 private:
-    template <class Keys>
-    static void rebuildIndex(QHash<typename Keys::value_type, qsizetype> & index, const Keys & keys)
+    // The key-to-position indexes are kept in step with the key lists on every change (a hand change, see the README):
+    // appending adds the new keys, a rename moves one key, erasing a range drops its keys and renumbers the keys after it,
+    // clear empties them.
+    template <class Keys, class Index>
+    static void indexAppended(Index & index, const Keys & keys, qsizetype first)
     {
-        index.clear();
-        for (qsizetype i = 0; i < keys.size(); ++i)
+        for (qsizetype i = first; i < keys.size(); ++i)
             index.insert(keys[i], i);
+    }
+
+    template <class Keys, class Index>
+    static void indexDropRange(Index & index, const Keys & keys, qsizetype first, qsizetype last)
+    {
+        for (qsizetype i = first; i <= last; ++i)
+            index.remove(keys[i]);
+    }
+
+    template <class Keys, class Index>
+    static void indexRenumberFrom(Index & index, const Keys & keys, qsizetype first)
+    {
+        for (qsizetype i = first; i < keys.size(); ++i)
+            index[keys[i]] = i;
     }
 
     template <class Keys, class IndexOf>
@@ -331,9 +341,10 @@ private:
 
     void appendRows(const QList<RowKey> & keys)
     {
+        const qsizetype first = m_rowKeys.size();
         m_rowKeys.append(keys);
         m_values.insert(m_values.size(), keys.size() * columnCount(), m_sentinel);
-        m_rowsStale = true;
+        indexAppended(m_rowIndex, m_rowKeys, first);
     }
 
     // One sentinel at the end of every row, last row first, so the offsets
@@ -343,15 +354,17 @@ private:
         const qsizetype columns = columnCount();
         for (qsizetype r = rowCount() - 1; r >= 0; --r)
             m_values.insert((r + 1) * columns, keys.size(), m_sentinel);
+        const qsizetype firstColumn = m_colKeys.size();
         m_colKeys.append(keys);
-        m_colsStale = true;
+        indexAppended(m_colIndex, m_colKeys, firstColumn);
     }
 
     void eraseRows(qsizetype first, qsizetype last)
     {
         m_values.remove(first * columnCount(), (last - first + 1) * columnCount());
+        indexDropRange(m_rowIndex, m_rowKeys, first, last);
         m_rowKeys.remove(first, last - first + 1);
-        m_rowsStale = true;
+        indexRenumberFrom(m_rowIndex, m_rowKeys, first);
     }
 
     void eraseColumns(qsizetype first, qsizetype last)
@@ -359,18 +372,17 @@ private:
         const qsizetype columns = columnCount();
         for (qsizetype r = rowCount() - 1; r >= 0; --r)
             m_values.remove(r * columns + first, last - first + 1);
+        indexDropRange(m_colIndex, m_colKeys, first, last);
         m_colKeys.remove(first, last - first + 1);
-        m_colsStale = true;
+        indexRenumberFrom(m_colIndex, m_colKeys, first);
     }
 
     Value m_sentinel;
     QList<RowKey> m_rowKeys;
     QList<ColKey> m_colKeys;
     QList<Value> m_values;  // row-major
-    mutable QHash<RowKey, qsizetype> m_rowIndex;
-    mutable QHash<ColKey, qsizetype> m_colIndex;
-    mutable bool m_rowsStale = true;
-    mutable bool m_colsStale = true;
+    QHash<RowKey, qsizetype> m_rowIndex;
+    QHash<ColKey, qsizetype> m_colIndex;
 };
 
 }  // namespace obs

@@ -7,7 +7,9 @@
 
 #include <reflect_moc/qt/qt.hpp>
 
+#include <algorithm>
 #include <functional>
+#include <random>
 
 namespace {
 
@@ -112,6 +114,76 @@ Letters lettersOf(const QStringList & keys)
     for (const QString & k : keys)
         m.insert(k, k.toUpper());
     return m;
+}
+
+
+// Removes "b", "c" and "e" from "abcdef" (value: the upper-case letter) in one batch and reads every row a receiver of
+// rowsAboutToBeRemoved is told about.
+template <class C>
+bool readsEveryDoomedRow(bool take)
+{
+    C content;
+    for (const QString & k : QStringList{"a", "b", "c", "d", "e", "f"})
+        content.insert(k, k.toUpper());
+    obs::Container<C> c(content);
+    TestModel<C> model(c);
+    QAbstractItemModelTester tester(&model, kTesterMode);
+    QStringList read;
+    QObject::connect(&model, &QAbstractItemModel::rowsAboutToBeRemoved, &model, [&](const QModelIndex &, int first, int last) {
+        for (int row = first; row <= last; ++row)
+            read.append(model.data(model.index(row, 0), Qt::DisplayRole).toString());
+    });
+    const QList<QString> doomed{"b", "c", "e"};
+    const qsizetype removed = take ? c.takeMany(doomed).size() : c.removeMany(doomed);
+    read.sort();
+    return removed == 3 && read == QStringList{"B", "C", "E"} && model.rowCount() == 3;
+}
+
+// After every step of a random mix of inserts, removals, batches, replaces and resets, rowOf agrees with the sorted keys of
+// the container for every key of a small universe, present or not.
+template <class C>
+bool rowOfAgreesWithTheRows(unsigned seed)
+{
+    obs::Container<C> c{C{}};
+    TestModel<C> model(c);
+    QAbstractItemModelTester tester(&model, kTesterMode);
+    constexpr int kUniverse = 24;
+    constexpr int kSteps = 400;
+    std::mt19937 rng(seed);
+    const auto key = [&] { return QString::number(static_cast<int>(rng() % kUniverse) + 100); };
+    for (int step = 0; step < kSteps; ++step) {
+        switch (rng() % 6) {
+        case 0: c.insert(key(), QString::number(step)); break;
+        case 1: c.remove(key()); break;
+        case 2: c.replace(key(), QString::number(step)); break;
+        case 3: {
+            C extra;
+            for (int i = 0; i < 3; ++i)
+                extra.insert(key(), QString::number(step));
+            c.insertMany(extra);
+            break;
+        }
+        case 4: c.removeMany(QList<QString>{key(), key(), key()}); break;
+        default:
+            if (rng() % 8 == 0)
+                c.clear();
+            break;
+        }
+        QList<QString> sorted;
+        for (int k = 0; k < kUniverse; ++k)
+            if (c.contains(QString::number(k + 100)))
+                sorted.append(QString::number(k + 100));
+        std::sort(sorted.begin(), sorted.end());
+        for (int k = 0; k < kUniverse; ++k) {
+            const QString name = QString::number(k + 100);
+            const int expected = sorted.indexOf(name);
+            if (model.rowOf(name) != expected)
+                return false;
+        }
+        if (model.rowCount() != sorted.size())
+            return false;
+    }
+    return true;
 }
 
 }  // namespace
@@ -280,18 +352,18 @@ private slots:
         QCOMPARE(displayedRows(model), (QStringList{"50", "30", "20", "10", "0"}));
     }
 
-    [[= rqt::slot]] void capability_aRowInsideABatchRemovalCycleReadsAsInvalid()
+    [[= rqt::slot]] void capability_aRowInsideABatchRemovalCycleReadsItsValue()
     {
         obs::Container<Letters> c(lettersOf({"a", "b", "c"}));
         TestModel<Letters> model(c);
         QAbstractItemModelTester tester(&model, kTesterMode);
-        bool valid = true;
+        QString read;
         QObject ctx;
         QObject::connect(&model, &QAbstractItemModel::rowsAboutToBeRemoved, &ctx, [&](const QModelIndex &, int f, int) {
-            valid = model.data(model.index(f, 0), Qt::DisplayRole).isValid();
+            read = model.data(model.index(f, 0), Qt::DisplayRole).toString();
         });
         c.removeMany({"b"});
-        QVERIFY(!valid);
+        QCOMPARE(read, QString("B"));
         QCOMPARE(displayedRows(model), (QStringList{"A", "C"}));
     }
 
@@ -308,6 +380,46 @@ private slots:
         c.append(3);
         QCOMPARE(sizeAbout, 2);
         QCOMPARE(sizeTwin, 3);
+    }
+
+    // 8.3 as the spec's author meant it: a batch removal is announced while the container still holds the entries, so a
+    // view reads every row it is losing, in a map and in a hash, through removeMany and through takeMany.
+    [[= rqt::slot]] void at_4_10_aBatchRemovalLetsAViewReadTheRowsItLoses()
+    {
+        QVERIFY(readsEveryDoomedRow<Letters>(false));
+        QVERIFY(readsEveryDoomedRow<Letters>(true));
+        QVERIFY((readsEveryDoomedRow<QHash<QString, QString>>(false)));
+        QVERIFY((readsEveryDoomedRow<QHash<QString, QString>>(true)));
+    }
+
+    // The container has erased a removed entry when it announces entryRemoved, and the model drops the row in its own receiver of
+    // that signal. A receiver connected before the model runs in between and finds the row still shown: it reads nothing, not a
+    // dangling value.
+    [[= rqt::slot]] void at_4_12_aReceiverAheadOfTheModelReadsNothingForTheRemovedEntry()
+    {
+        obs::Container<Letters> c(lettersOf({"a", "b", "c"}));
+        QVariant read = QStringLiteral("untouched");
+        QAbstractItemModel * watched = nullptr;
+        QObject ctx;
+        QObject::connect(&c, &obs::Container<Letters>::entryRemoved, &ctx, [&](const QString &) {
+            read = watched->data(watched->index(1, 0), Qt::DisplayRole);
+        });
+        TestModel<Letters> model(c);
+        watched = &model;
+        QAbstractItemModelTester tester(&model, kTesterMode);
+        QVERIFY(c.remove("b"));
+        QVERIFY(!read.isValid());
+        QCOMPARE(model.rowCount(), 2);
+    }
+
+    // The row lookup is a binary search over the sorted row keys: it agrees with the container after every step of a random
+    // mix, in a map and in a hash (whose rows are sorted by the same Less).
+    [[= rqt::slot]] void at_4_11_theRowLookupAgreesWithTheRowsAfterEveryStep()
+    {
+        for (unsigned seed = 1; seed <= 5; ++seed) {
+            QVERIFY(rowOfAgreesWithTheRows<Letters>(seed));
+            QVERIFY((rowOfAgreesWithTheRows<QHash<QString, QString>>(seed)));
+        }
     }
 
     // Added after mutation testing (a mutant that left the key-to-row map fresh after an insert survived): a lookup after inserts

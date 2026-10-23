@@ -70,23 +70,11 @@ public:
 
     qsizetype rowIndexOf(const RowKey & key) const
     {
-        if (rowsStale_) {
-            rowIndex_.clear();
-            for (qsizetype i = 0; i < rows_.size(); ++i)
-                rowIndex_.insert(rows_[i], i);
-            rowsStale_ = false;
-        }
         return rowIndex_.value(key, -1);
     }
 
     qsizetype columnIndexOf(const ColKey & key) const
     {
-        if (columnsStale_) {
-            columnIndex_.clear();
-            for (qsizetype j = 0; j < columns_.size(); ++j)
-                columnIndex_.insert(columns_[j], j);
-            columnsStale_ = false;
-        }
         return columnIndex_.value(key, -1);
     }
 
@@ -122,7 +110,7 @@ public:
         rowAboutToBeAdded(key, index);
         rows_.append(key);
         appendSentinels(columnCount());
-        rowsStale_ = true;
+        rowIndex_.insert(key, index);
         rowAdded(key, index);
         return true;
     }
@@ -135,7 +123,7 @@ public:
         columnAboutToBeAdded(key, index);
         columns_.append(key);
         insertColumnSentinels(index, 1);
-        columnsStale_ = true;
+        columnIndex_.insert(key, index);
         columnAdded(key, index);
         return true;
     }
@@ -150,7 +138,7 @@ public:
         rowsAboutToBeAdded(first, last, fresh);
         rows_.append(fresh);
         appendSentinels(columnCount() * fresh.size());
-        rowsStale_ = true;
+        indexAppended(rowIndex_, rows_, first);
         rowsAdded(first, last, fresh);
         return fresh.size();
     }
@@ -165,7 +153,7 @@ public:
         columnsAboutToBeAdded(first, last, fresh);
         columns_.append(fresh);
         insertColumnSentinels(first, fresh.size());
-        columnsStale_ = true;
+        indexAppended(columnIndex_, columns_, first);
         columnsAdded(first, last, fresh);
         return fresh.size();
     }
@@ -236,7 +224,8 @@ public:
         const RowKey oldKey = rows_[index];  // a copy: `from` may refer to the very element we overwrite
         rowAboutToBeRenamed(oldKey, to, index);
         rows_[index] = to;
-        rowsStale_ = true;  // a rename changes keys without changing counts: the lookup map is stale all the same
+        rowIndex_.remove(oldKey);
+        rowIndex_.insert(to, index);
         rowRenamed(oldKey, to, index);
         return true;
     }
@@ -253,7 +242,8 @@ public:
         const ColKey oldKey = columns_[index];
         columnAboutToBeRenamed(oldKey, to, index);
         columns_[index] = to;
-        columnsStale_ = true;
+        columnIndex_.remove(oldKey);
+        columnIndex_.insert(to, index);
         columnRenamed(oldKey, to, index);
         return true;
     }
@@ -341,8 +331,8 @@ public:
         rows_.clear();
         columns_.clear();
         cells_.clear();
-        rowsStale_ = true;
-        columnsStale_ = true;
+        rowIndex_.clear();
+        columnIndex_.clear();
         cleared();
     }
 
@@ -403,8 +393,9 @@ private:
     {
         const qsizetype width = columnCount();
         cells_.remove(first * width, (last - first + 1) * width);
+        indexDropRange(rowIndex_, rows_, first, last);
         rows_.remove(first, last - first + 1);
-        rowsStale_ = true;
+        indexRenumberFrom(rowIndex_, rows_, first);
     }
 
     void eraseColumns(qsizetype first, qsizetype last)
@@ -412,18 +403,41 @@ private:
         const qsizetype oldWidth = columnCount();
         for (qsizetype r = rowCount() - 1; r >= 0; --r)
             cells_.remove(r * oldWidth + first, last - first + 1);
+        indexDropRange(columnIndex_, columns_, first, last);
         columns_.remove(first, last - first + 1);
-        columnsStale_ = true;
+        indexRenumberFrom(columnIndex_, columns_, first);
+    }
+
+    // The key-to-position indexes are kept in step with the key lists on every change (a hand change, see the README):
+    // appending adds the new keys, a rename moves one key, erasing a range drops its keys and renumbers the keys after it,
+    // clear empties them.
+    template <class Keys, class Index>
+    static void indexAppended(Index & index, const Keys & keys, qsizetype first)
+    {
+        for (qsizetype i = first; i < keys.size(); ++i)
+            index.insert(keys[i], i);
+    }
+
+    template <class Keys, class Index>
+    static void indexDropRange(Index & index, const Keys & keys, qsizetype first, qsizetype last)
+    {
+        for (qsizetype i = first; i <= last; ++i)
+            index.remove(keys[i]);
+    }
+
+    template <class Keys, class Index>
+    static void indexRenumberFrom(Index & index, const Keys & keys, qsizetype first)
+    {
+        for (qsizetype i = first; i < keys.size(); ++i)
+            index[keys[i]] = i;
     }
 
     Value sentinel_;
     QList<RowKey> rows_;
     QList<ColKey> columns_;
     QList<Value> cells_;  // row-major
-    mutable QHash<RowKey, qsizetype> rowIndex_;
-    mutable QHash<ColKey, qsizetype> columnIndex_;
-    mutable bool rowsStale_ = true;
-    mutable bool columnsStale_ = true;
+    QHash<RowKey, qsizetype> rowIndex_;
+    QHash<ColKey, qsizetype> columnIndex_;
 };
 
 }  // namespace obs
