@@ -4,6 +4,8 @@
 // and no snapshot value is served afterwards. Catalogue row: docs/qt-edge-cases/protocol.md (P-25).
 #include "protocol_support.hpp"
 
+#include <algorithm>
+
 namespace {
 using namespace edge;
 
@@ -33,6 +35,20 @@ class RunReader : public QObject {
   int m_doomedRead = 0;
 };
 
+// The runs a batch removal announces: the rows that show one of `doomed`, counted as stretches of adjacent rows. The row
+// order of a hash is the order its keys were found in, which changes from one process to the next, so the number of
+// runs is worked out from the rows and not fixed in the test.
+int announced_runs(const std::vector<int>& before, std::initializer_list<int> doomed) {
+  int runs = 0;
+  bool inside = false;
+  for (const int shown : before) {
+    const bool hit = std::find(doomed.begin(), doomed.end(), shown) != doomed.end();
+    runs += hit && !inside ? 1 : 0;
+    inside = hit;
+  }
+  return runs;
+}
+
 // P-25
 void rows_of_a_batch_removal_read_their_values_while_it_is_announced() {
   for_each_model(
@@ -41,13 +57,15 @@ void rows_of_a_batch_removal_read_their_values_while_it_is_announced() {
         if constexpr (Fx::keyed) {
           RowProbe probe(fx.model.get());
           KCHECK(fx.remove(1));  // a single remove was always announced before it erased
-          RunReader reader(fx.model.get(), fx.shown());
+          const std::vector<int> before = fx.shown();
+          RunReader reader(fx.model.get(), before);
           KCHECK(fx.source.removeMany({Fx::named(2), Fx::named(3), Fx::named(5), Fx::named(8), Fx::named(9), Fx::named(kUnknownRole)}) == 5);
-          KCHECK(reader.runs() >= 2 && reader.doomed_read() == 5 && reader.wrong() == 0);  // scattered rows, several runs, all readable
+          KCHECK(reader.runs() == announced_runs(before, {2, 3, 5, 8, 9}) && reader.doomed_read() == 5 && reader.wrong() == 0);  // one cycle per run, all readable
           KCHECK(probe.blank_rows_being_removed() == 0 && probe.disagreements() == 0);
-          RunReader taker(fx.model.get(), fx.shown());
+          const std::vector<int> beforeTake = fx.shown();
+          RunReader taker(fx.model.get(), beforeTake);
           KCHECK(fx.source.takeMany({Fx::named(4), Fx::named(6), Fx::named(7)}).size() == 3);
-          KCHECK(taker.runs() >= 1 && taker.doomed_read() == 3 && taker.wrong() == 0);
+          KCHECK(taker.runs() == announced_runs(beforeTake, {4, 6, 7}) && taker.doomed_read() == 3 && taker.wrong() == 0);
           KCHECK(probe.blank_rows_being_removed() == 0 && probe.disagreements() == 0);
           KCHECK(fx.rows() == 1 && fx.source.size() == 1);
         }
