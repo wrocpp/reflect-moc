@@ -19,6 +19,7 @@ Two agents, each started fresh with no other code in view, each given the genera
 (binding A: `SPEC.md` and `PROMPT.md` only; binding B: the same two files and the reflect-moc headers, with the
 observable models of this repository removed from its copy). Neither could run git or reach credentials.
 Each was asked to write down every ambiguity and every acceptance test result.
+Their reports are in [`notes`](notes), as they wrote them.
 
 Hand changes after generation, all in `binding_b/CMakeLists.txt`: the default reflect-moc include directory
 points at this repository, `reflect_moc_qt` is not defined twice when the directory is added as a subdirectory,
@@ -87,14 +88,15 @@ Binding B added: no constructors for the example models (10.7, so they start emp
 
 ## Where the spec looks wrong
 
-1. 8.3: batch removal calls `beginRemoveRows` after the container has erased the entries, so `data()` of the doomed rows is invalid during the cycle. A proxy or view that reads them in `rowsAboutToBeRemoved` sees nothing. The spec chose this on purpose (C5); it is a trade-off.
+1. 8.3: batch removal calls `beginRemoveRows` after the container has erased the entries, so `data()` of the doomed rows is invalid during the cycle. A proxy or view that reads them in `rowsAboutToBeRemoved` sees nothing. Update 23 Oct 2026: this is a mistake in the spec, not a trade-off, as Leonardo Rossi confirmed. In his code the removal cycle starts at the "about" notification, while the entry is still in the container.
 2. 7.1 against G3: G3 lists "a value already equal" as nothing changed, but `replace` always notifies.
 3. 14 against 6.4 and 10.5: `sel_kit` is meant to be independent of `obs_kit`, but the Multi `clearSelectionAndNotify` needs `contiguousRuns`, which section 6.4 puts in `obs`. Both agents included `obs/traits.h`.
 4. 15.3: `template <class Self = C>` lets a caller write `insertMany<QHash<int, int>>(...)` on a `QList` container and defeat the `static_assert`.
 5. 10.6: `rowInserted` returns nothing, so every host compares `selectedRow()` before and after; returning a `Delta` as `rowRemoved` does would remove that.
 6. 10.2 and 10.7: a Multi tracker starts with 0 rows and the example models have no constructor, so a host over existing rows must call `reset(n)` first or the `Q_ASSERT` fires.
 7. 16: the Qt API list is smaller than the spec needs (`QModelIndex`, `Qt::ItemFlags`, `Qt::Orientation`, `CheckIndexOption`, `QObject::disconnect`, `QMetaObject::Connection`, and in the tests `QVariant::toString`, `toInt`, `toDouble`, `QString::number`, `QChar`).
-8. Binding B only: 6.1 `VariantKey` and AT-1.8 test a requirement 4.2 drops, 15.2 takes `const ContainerSignals *`, 14 lists an AUTOMOC `obs_kit`, and the spec says C++20 throughout while reflect-moc needs C++26. A short table of the binding B readings of section 15 would save the translation.
+8. 8.1 (found by measuring, not by the agents): the list model keeps a lazy key-to-row map that every change marks stale and the next lookup rebuilds, so draining a container pays O(n) per removal: 193 microseconds per removal at 10,000 `QHash` entries on x86_64, in both bindings ([`docs/measurements.md`](../../../docs/measurements.md)). Update 23 Oct 2026: Leonardo Rossi confirmed that his real list model does the same.
+9. Binding B only: 6.1 `VariantKey` and AT-1.8 test a requirement 4.2 drops, 15.2 takes `const ContainerSignals *`, 14 lists an AUTOMOC `obs_kit`, and the spec says C++20 throughout while reflect-moc needs C++26. A short table of the binding B readings of section 15 would save the translation.
 
 ## Binding A on MSVC and Clang: one thing to watch
 
