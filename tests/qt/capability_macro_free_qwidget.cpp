@@ -1,4 +1,4 @@
-// rqt::ObjectOf<D, QWidget>: a widget and a derived widget with no macro, on top of QWidget's own meta-object
+// rqt::ObjectOf<QWidget>: a widget and a derived widget with no macro, on top of QWidget's own meta-object
 // (offscreen QPA), with a data-member signal in each class.
 #include "check.hpp"
 
@@ -13,9 +13,9 @@ constexpr int kWidth = 120;
 constexpr int kBadge = 4;
 }  // namespace
 
-class Panel : public rqt::ObjectOf<Panel, QWidget> {
+class Panel : public rqt::ObjectOf<QWidget> {
  public:
-  explicit Panel(QWidget* parent = nullptr) : rqt::ObjectOf<Panel, QWidget>(parent) {}
+  explicit Panel(QWidget* parent = nullptr) : ObjectOf(parent) {}
   [[= rqt::property{.write = "setBadge", .notify = "badgeChanged"}]] int badge() const { return badge_; }
   rqt::signal<void(int)> badgeChanged;
   [[= rqt::slot]] void setBadge(int b) {
@@ -28,9 +28,9 @@ class Panel : public rqt::ObjectOf<Panel, QWidget> {
   int badge_ = 0;
 };
 
-class Footer : public rqt::ObjectOf<Footer, Panel> {
+class Footer : public rqt::ObjectOf<Panel> {
  public:
-  explicit Footer(QWidget* parent = nullptr) : rqt::ObjectOf<Footer, Panel>(parent) {}
+  using ObjectOf::ObjectOf;
   [[= rqt::slot]] void widen() { resize(kWidth, height()); }
   rqt::signal<void()> widened;
   void widenAndTell() {

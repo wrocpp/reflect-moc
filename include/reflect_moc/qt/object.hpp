@@ -53,7 +53,7 @@ namespace detail {
 // variable template; a Qt class (QObject, QWidget, a moc'd class) has its own staticMetaObject.
 template <class D>
 constexpr QMetaObject::SuperData super_of() {
-  if constexpr (is_gadget(^^D) && meta::template_arguments_of(gadget_base_of(^^D))[1] == ^^void) {
+  if constexpr (is_gadget(^^D) && meta::template_arguments_of(gadget_base_of(^^D))[0] == ^^void) {
     return QMetaObject::SuperData{};  // a gadget with no base has no super meta-object
   } else {
     constexpr info base = super_type(^^D);
