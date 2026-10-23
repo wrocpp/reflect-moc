@@ -392,6 +392,26 @@ private slots:
         QVERIFY((readsEveryDoomedRow<QHash<QString, QString>>(true)));
     }
 
+    // The container has erased a removed entry when it announces entryRemoved, and the model drops the row in its own receiver of
+    // that signal. A receiver connected before the model runs in between and finds the row still shown: it reads nothing, not a
+    // dangling value.
+    [[= rqt::slot]] void at_4_12_aReceiverAheadOfTheModelReadsNothingForTheRemovedEntry()
+    {
+        obs::Container<Letters> c(lettersOf({"a", "b", "c"}));
+        QVariant read = QStringLiteral("untouched");
+        QAbstractItemModel * watched = nullptr;
+        QObject ctx;
+        QObject::connect(&c, &obs::Container<Letters>::entryRemoved, &ctx, [&](const QString &) {
+            read = watched->data(watched->index(1, 0), Qt::DisplayRole);
+        });
+        TestModel<Letters> model(c);
+        watched = &model;
+        QAbstractItemModelTester tester(&model, kTesterMode);
+        QVERIFY(c.remove("b"));
+        QVERIFY(!read.isValid());
+        QCOMPARE(model.rowCount(), 2);
+    }
+
     // The row lookup is a binary search over the sorted row keys: it agrees with the container after every step of a random
     // mix, in a map and in a hash (whose rows are sorted by the same Less).
     [[= rqt::slot]] void at_4_11_theRowLookupAgreesWithTheRowsAfterEveryStep()
