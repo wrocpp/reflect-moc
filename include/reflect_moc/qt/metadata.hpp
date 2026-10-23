@@ -96,21 +96,35 @@ constexpr Data function_data(unsigned flags) {
   constexpr Params params = []<std::size_t... P>(std::index_sequence<P...>) {
     return Params{{{type_id<D, entry_param_t<M, P>>(), string_index<D>(entry_param_name(M, P))}...}};
   }(std::make_index_sequence<N>{});
-  return Data(string_index<D>(meta::identifier_of(M)), string_index<D>(""), flags, type_id<D, entry_return_t<M>>(),
-              params);
+  if constexpr (Data::IsRevisioned)
+    return Data(string_index<D>(meta::identifier_of(M)), string_index<D>(""), flags, method_revision(M),
+                type_id<D, entry_return_t<M>>(), params);
+  else
+    return Data(string_index<D>(meta::identifier_of(M)), string_index<D>(""), flags, type_id<D, entry_return_t<M>>(),
+                params);
 }
 
 template <class D, std::size_t I>
 constexpr auto method_data() {
   constexpr method_entry e = method_entries<D>[I];
   using F = signature_t<e.fn, e.nargs>;
-  constexpr unsigned flags = access_of(e.fn) | (e.cloned ? QMC::MethodCloned : 0u);
-  if constexpr (kind_of(e.fn) == method_kind::signal_)
-    return function_data<QtMocHelpers::SignalData<F>, D, e.fn, e.nargs>(flags);
-  else if constexpr (kind_of(e.fn) == method_kind::slot_)
-    return function_data<QtMocHelpers::SlotData<F>, D, e.fn, e.nargs>(flags);
-  else
-    return function_data<QtMocHelpers::MethodData<F>, D, e.fn, e.nargs>(flags);
+  constexpr unsigned flags = access_of(e.fn) | (e.cloned ? QMC::MethodCloned : 0u) | method_extra_flags(e.fn);
+  if constexpr (kind_of(e.fn) == method_kind::signal_) {
+    if constexpr (has_method_revision(e.fn))
+      return function_data<QtMocHelpers::RevisionedSignalData<F>, D, e.fn, e.nargs>(flags);
+    else
+      return function_data<QtMocHelpers::SignalData<F>, D, e.fn, e.nargs>(flags);
+  } else if constexpr (kind_of(e.fn) == method_kind::slot_) {
+    if constexpr (has_method_revision(e.fn))
+      return function_data<QtMocHelpers::RevisionedSlotData<F>, D, e.fn, e.nargs>(flags);
+    else
+      return function_data<QtMocHelpers::SlotData<F>, D, e.fn, e.nargs>(flags);
+  } else {
+    if constexpr (has_method_revision(e.fn))
+      return function_data<QtMocHelpers::RevisionedMethodData<F>, D, e.fn, e.nargs>(flags);
+    else
+      return function_data<QtMocHelpers::MethodData<F>, D, e.fn, e.nargs>(flags);
+  }
 }
 
 // --- property rows ---------------------------------------------------------------------
@@ -120,7 +134,7 @@ constexpr auto property_data() {
   constexpr prop_desc d = property_at<D>(I);
   using T = typename[:d.type:];
   return QtMocHelpers::PropertyData<T>(string_index<D>(d.name.view()), type_id<D, T>(), d.flags,
-                                       static_cast<unsigned>(notify_index(^^D, d)));
+                                       static_cast<unsigned>(notify_index(^^D, d)), d.revision);
 }
 
 // --- enum rows -------------------------------------------------------------------------

@@ -101,6 +101,11 @@ class Object : public B, public object_tag {
   using B::B;
   Object() = default;
 
+ protected:
+  struct QPrivateSignal {};  // the last parameter of a signal only this class can emit (moc's QPrivateSignal)
+
+ public:
+
   // There is no constructor that takes `this` (spike E2): it cannot be told
   // apart from a parent pointer to another reflected object, and a wrong guess
   // silently loses the parent.

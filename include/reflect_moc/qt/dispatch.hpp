@@ -56,7 +56,10 @@ decltype(auto) member_ref(C* self) {
 // Calls a slot, an invokable or a signal; calling a signal data member activates it.
 template <info Fn, class C, class... A>
 decltype(auto) call(C* self, A&&... a) {
-  if constexpr (is_static_signal(Fn)) {
+  if constexpr (has_private_tag(Fn) && sizeof...(A) == entry_arity(Fn)) {
+    // moc passes QPrivateSignal() too: the class's own tag, which only the class (and so this call) can make
+    return call<Fn>(self, std::forward<A>(a)..., entry_param_t<Fn, entry_arity(Fn)>{});
+  } else if constexpr (is_static_signal(Fn)) {
     return [:Fn:](std::forward<A>(a)...).from(self);
   } else if constexpr (is_data_signal(Fn)) {
     return member_ref<Fn>(self)(std::forward<A>(a)...);
