@@ -9,6 +9,7 @@
 #include "object.hpp"
 #include "object_of.hpp"
 #include "signal.hpp"
+#include "signal_overloads.hpp"
 
 #if __has_include(<QtQml/qqml.h>)
 #include "qml.hpp"

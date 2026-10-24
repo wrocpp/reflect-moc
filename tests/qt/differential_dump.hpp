@@ -8,7 +8,7 @@
 #include <QtCore/QMetaProperty>
 #include <QtCore/QStringList>
 
-inline QString strip_namespace(QString s) { return s.remove("viamoc::").remove("viarqt::"); }
+inline QString strip_namespace(QString s) { return s.remove("viamoc::").remove("viarqt_function_form::").remove("viarqt::"); }
 
 inline QString join_names(QList<QByteArray> const& names) {
   QStringList out;
