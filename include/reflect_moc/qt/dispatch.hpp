@@ -7,6 +7,7 @@
 #include <QtCore/QMetaObject>
 #include <QtCore/QMetaType>
 #include <QtCore/QObject>
+#include <QtCore/QProperty>
 
 #include <cstddef>
 #include <type_traits>
@@ -185,6 +186,12 @@ void reset_property(D* t) {
   if constexpr (present(d.reset)) call<d.reset>(t);
 }
 
+// moc: `*static_cast<QUntypedBindable*>(_a[0]) = _t->bindableX();`
+template <prop_desc d, class D>
+void bind_property(D* t, void* v) {
+  if constexpr (present(d.bindable)) *static_cast<QUntypedBindable*>(v) = call<d.bindable>(t);
+}
+
 template <class T>
 int register_property_type() {
   if constexpr (named_type_v<T>)
@@ -203,6 +210,7 @@ void property_call(D* t, QMetaObject::Call c, int id, void** a) {
       case QMetaObject::ReadProperty: read_property<T, D, d>(t, a[0]); break;
       case QMetaObject::WriteProperty: write_property<T, d>(t, a[0]); break;
       case QMetaObject::ResetProperty: reset_property<d>(t); break;
+      case QMetaObject::BindableProperty: bind_property<d>(t, a[0]); break;
       case QMetaObject::RegisterPropertyMetaType: *static_cast<int*>(a[0]) = register_property_type<T>(); break;
       default: break;
     }
@@ -225,6 +233,7 @@ void static_metacall(QObject* o, QMetaObject::Call c, int id, void** a) {
     case QMetaObject::ReadProperty:
     case QMetaObject::WriteProperty:
     case QMetaObject::ResetProperty:
+    case QMetaObject::BindableProperty:
     case QMetaObject::RegisterPropertyMetaType: property_call<D>(t, c, id, a); break;
     default: break;
   }

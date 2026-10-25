@@ -226,7 +226,9 @@ it is left out of the signature, as moc does, and only the class can make the ta
 works for every enum a class registers: `RQT_OBJECT` declares the friend functions Qt looks for (`RQT_ENUM` also declares them,
 for a class with no `RQT_OBJECT`). What the parser accepts and the tables would ignore stops the build: a function that is a slot
 and an invokable, `rqt::revision` or `rqt::scriptable` on anything else, a function in place of `true` or `false` after
-DESIGNABLE, SCRIPTABLE, STORED or USER, and BINDABLE. Tests: `parity_method_flags`, `parity_private_signal`,
+DESIGNABLE, SCRIPTABLE, STORED or USER. `BINDABLE name` works as in moc (the named zero-parameter function returns the
+property's `QBindable`, and may be private); a name that matches nothing stops the build. Tests: `parity_bindable`,
+`limit_property_bindable_typo`, `parity_method_flags`, `parity_private_signal`,
 `parity_enum_from_type`, `parity_revision`, `limit_property_*`, `limit_method_two_kinds`.
 
 `rqt::property` fields, all optional, in this order (a designated initializer keeps it):
@@ -414,7 +416,7 @@ class SampleStore : public ObservableContainer<QHash<unsigned, Sample>> {
   that overloads a signal keeps the function form, `[[=rqt::signal_function]]`, for those.
 - **`QtPrivate::FunctionPointer` is Qt's internal namespace.** The specialization in `signal.hpp`
   follows its shape in Qt 6.10.3 (the version tested); other versions are not tested.
-- **Function-valued `DESIGNABLE`/`SCRIPTABLE`/`STORED`/`USER` and `BINDABLE`** in `RQT_PROPERTY`
+- **Function-valued `DESIGNABLE`/`SCRIPTABLE`/`STORED`/`USER`** in `RQT_PROPERTY`
   stop the build with a message that they are not supported. `Q_GADGET`, `Q_NAMESPACE`, and slots or
   signals that are only named in `slots:` or `signals:` sections are not mapped by
   `reflect_moc/compat.hpp`: add `[[=rqt::slot]]`, write the signal as a member.

@@ -92,10 +92,10 @@ set(limit_property_stored_function_MESSAGE
   "STORED takes true or false; a function name is not supported")
 set(limit_property_user_function_MESSAGE
   "USER takes true or false; a function name is not supported")
-set(limit_property_bindable_unsupported_MESSAGE
-  "BINDABLE is not supported")
 set(limit_enum_from_type_macro_free_MESSAGE
   "QMetaEnum::fromType only works with enums declared as")
+set(limit_property_bindable_typo_MESSAGE
+  "rqt::property BINDABLE .bindableLevl.: no member function of that name in Gauge")
 set(limit_property_read_missing_MESSAGE
   "needs READ or MEMBER")
 set(limit_property_read_typo_MESSAGE
@@ -117,8 +117,8 @@ set(RQT_QT_COMPILE_FAIL_TESTS
   limit_property_scriptable_function
   limit_property_stored_function
   limit_property_user_function
-  limit_property_bindable_unsupported
   limit_enum_from_type_macro_free
+  limit_property_bindable_typo
   limit_property_read_missing
   limit_property_read_typo
   limit_property_notify_missing

@@ -336,6 +336,7 @@ struct prop_desc {
   info write = absent();
   info notify = absent();
   info reset = absent();
+  info bindable = absent();
   short_text name{};
   unsigned flags = 0;
   unsigned revision = 0;  // encoded, as QMetaProperty::revision() returns it
@@ -410,6 +411,30 @@ consteval info resolve_write(info cls, info anchor, std::string_view name, info 
                         anchor);
 }
 
+// BINDABLE names the function moc calls as `_t->name()` to get the property's QBindable: one member function without
+// parameters, found by name. A const and a non-const overload of it would make that call ambiguous for a reader, so it is
+// an error here.
+consteval info resolve_bindable(info cls, info anchor, std::string_view name) {
+  info found = absent();
+  bool seen = false;
+  for (auto m : meta::members_of(cls, unchecked)) {
+    if (!meta::is_function(m) || !meta::has_identifier(m) || meta::identifier_of(m) != name) continue;
+    seen = true;
+    if (arity(m) != 0) continue;
+    if (present(found))
+      throw meta::exception(cat({"rqt::property BINDABLE '", name, "': ambiguous, several functions of that name in ",
+                                 meta::identifier_of(cls), " take no parameters"}),
+                            anchor);
+    found = m;
+  }
+  if (present(found)) return found;
+  throw meta::exception(seen ? cat({"rqt::property BINDABLE '", name, "': needs a member function without parameters, in ",
+                                    meta::identifier_of(cls)})
+                             : cat({"rqt::property BINDABLE '", name, "': no member function of that name in ",
+                                    meta::identifier_of(cls)}),
+                        anchor);
+}
+
 consteval void resolve_accessors(prop_desc& d, info cls, property const& p) {
   if (!p.write.view().empty()) {
     d.write = resolve_write(cls, d.anchor, p.write.view(), d.type);
@@ -422,6 +447,7 @@ consteval void resolve_accessors(prop_desc& d, info cls, property const& p) {
     d.notify = resolve_notify(cls, d.anchor, p.notify.view());
     d.notify_sig = notify_signature(d.notify);
   }
+  if (!p.bindable.view().empty()) d.bindable = resolve_bindable(cls, d.anchor, p.bindable.view());
 }
 
 consteval info find_data_member(info cls, info anchor, std::string_view name) {
@@ -465,7 +491,7 @@ consteval property annotation_from(prop_decl const& pd) {
   return {.read = pd.read, .write = pd.write, .notify = pd.notify, .reset = pd.reset, .name = pd.name,
           .final = pd.final, .constant = pd.constant, .required = pd.required, .user = pd.user,
           .designable = pd.designable, .scriptable = pd.scriptable, .stored = pd.stored,
-          .revision = revision::from_encoded(pd.revision)};
+          .revision = revision::from_encoded(pd.revision), .bindable = pd.bindable};
 }
 
 // A static constexpr member of type prop_decl: what RQT_PROPERTY declares.
@@ -498,6 +524,7 @@ consteval unsigned property_flags_of(prop_desc const& d, property const& p) {
   if (present(d.reset)) f |= QMC::Resettable;
   if (!resolved_by_id(d.type)) f |= QMC::EnumOrFlag;
   if (is_std_setter(d)) f |= QMC::StdCppSet;
+  if (present(d.bindable)) f |= QMC::Bindable;
   return f;
 }
 
@@ -561,6 +588,7 @@ struct prop_row {
   std::size_t write = 0;
   std::size_t notify = 0;
   std::size_t reset = 0;
+  std::size_t bindable = 0;
   short_text name{};
   unsigned flags = 0;
   unsigned revision = 0;
@@ -589,6 +617,7 @@ consteval std::vector<prop_row> make_prop_rows(info cls) {
                    .write = position_of(cls, d.write),
                    .notify = position_of(cls, d.notify),
                    .reset = position_of(cls, d.reset),
+                   .bindable = position_of(cls, d.bindable),
                    .name = d.name,
                    .flags = d.flags,
                    .revision = d.revision,
@@ -610,6 +639,7 @@ consteval prop_desc expand_prop(info cls, prop_row const& r) {
               .write = member_at(cls, r.write),
               .notify = member_at(cls, r.notify),
               .reset = member_at(cls, r.reset),
+              .bindable = member_at(cls, r.bindable),
               .name = r.name,
               .flags = r.flags,
               .revision = r.revision,
