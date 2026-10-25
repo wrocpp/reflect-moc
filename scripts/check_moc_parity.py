@@ -12,7 +12,7 @@ A row is a markdown table row with eight cells:
             unsupported  does not build or is ignored today; the note says why and what would carry it
             impossible   needs an external file or build step (the note names it) or is not expressible in C++
             not-needed   the construct exists to serve something reflect-moc does not have (a generated file)
-  test      the test file without .cpp, found anywhere below tests/qt; mandatory for same, optional otherwise
+  test      the test file without .cpp, found anywhere below tests/qt (several, comma-separated); mandatory for same, optional otherwise
   note      mandatory for every verdict but same
 
 The macro-free column is a spelling, or '-' when the construct has no macro-free form yet.
@@ -45,11 +45,12 @@ def main(argv):
                 problems.append(f"{where}: {label} is blank (use - for none)")
         if verdict not in VERDICTS:
             problems.append(f"{where}: verdict '{verdict}' is not one of {sorted(VERDICTS)}")
-        name = test.partition("::")[0]
-        if verdict == "same" and name in {"", "-"}:
+        listed = [t.partition("::")[0].strip("` ") for t in test.split(",")]
+        if verdict == "same" and listed[0] in {"", "-"}:
             problems.append(f"{where}: a 'same' row needs a test")
-        if name not in {"", "-"} and name not in names:
-            problems.append(f"{where}: no test file {name}.cpp below {tests}")
+        for name in listed:
+            if name not in {"", "-"} and name not in names:
+                problems.append(f"{where}: no test file {name}.cpp below {tests}")
         if verdict in VERDICTS - {"same"} and not note.strip():
             problems.append(f"{where}: a '{verdict}' row needs a note")
     for problem in problems:
