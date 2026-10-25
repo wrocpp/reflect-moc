@@ -125,6 +125,7 @@ consteval bool is_data_signal(info m) {
 consteval method_kind kind_of(info m) {
   if (is_data_signal(m)) return method_kind::signal_;
   if (!meta::is_function(m)) return method_kind::none;
+  if (meta::is_constructor(m)) return method_kind::none;  // an invokable constructor has its own table (make_constructor_entries)
   if (has<signal_t>(m)) return method_kind::signal_;
   if (has<slot_t>(m)) return method_kind::slot_;
   if (has<invokable_t>(m)) return method_kind::invokable_;
@@ -252,6 +253,7 @@ consteval std::vector<method_entry> make_method_entries(info cls) {
 consteval void check_method_annotations(info cls) {
   for (auto m : meta::members_of(cls, unchecked)) {
     if (!(meta::is_function(m) || meta::is_variable(m) || meta::is_nonstatic_data_member(m))) continue;
+    if (meta::is_function(m) && meta::is_constructor(m)) continue;  // check_constructor
     if (meta::is_function(m) && static_cast<int>(has<signal_t>(m)) + static_cast<int>(has<slot_t>(m)) +
                                         static_cast<int>(has<invokable_t>(m)) > 1)
       throw meta::exception("rqt: a member function is annotated as more than one of signal_function, slot and invokable; "
@@ -268,6 +270,40 @@ consteval std::vector<method_entry> make_checked_method_entries(info cls) {
   check_method_annotations(cls);
   return make_method_entries(cls);
 }
+
+// --- invokable constructors ----------------------------------------------------------------
+
+// Q_INVOKABLE on a constructor: `[[=rqt::invokable]] C(int a, int b = 3);`. A constructor template cannot carry the
+// annotation: GCC 16.2 throws from annotations_of on any template, so none is ever found (docs/moc-parity.md, B-13).
+// What an annotated constructor can be: it is created by `new` in the meta-call, so it must be callable from outside the
+// class, and only the invokable annotation means something on it. Anything else would be dropped by the table (H-02).
+consteval void check_constructor(info ctor) {
+  if (has<signal_t>(ctor) || has<slot_t>(ctor))
+    throw meta::exception("rqt: a constructor can only be rqt::invokable, not a signal or a slot", ctor);
+  if (has<revision>(ctor) || has<scriptable_t>(ctor))
+    throw meta::exception("rqt: rqt::revision and rqt::scriptable are not supported on an invokable constructor", ctor);
+  if (!meta::is_public(ctor))
+    throw meta::exception("rqt: an invokable constructor must be public: the meta-call creates the object with new", ctor);
+  if (meta::is_deleted(ctor)) throw meta::exception("rqt: an invokable constructor cannot be deleted", ctor);
+}
+
+// Qt's order: each constructor, then its clones, one per omitted trailing default argument, longest first (as methods).
+consteval std::vector<method_entry> make_constructor_entries(info cls) {
+  std::vector<method_entry> out;
+  for (auto m : meta::members_of(cls, unchecked)) {
+    if (!meta::is_function(m) || !meta::is_constructor(m)) continue;
+    if (!(has<invokable_t>(m) || has<signal_t>(m) || has<slot_t>(m) || has<revision>(m) || has<scriptable_t>(m))) continue;
+    check_constructor(m);  // what it lets through carries rqt::invokable alone
+    append_entries(out, m);
+  }
+  return out;
+}
+
+template <class D>
+inline constexpr auto constructor_entries = std::define_static_array(make_constructor_entries(^^D));
+
+template <class D>
+inline constexpr std::size_t constructor_total = constructor_entries<D>.size();
 
 template <class D>
 inline constexpr auto method_entries = std::define_static_array(make_checked_method_entries(^^D));
@@ -754,6 +790,14 @@ consteval void pool_methods(string_pool& pool, info cls) {
   }
 }
 
+consteval void pool_constructors(string_pool& pool, info cls) {
+  for (auto e : make_constructor_entries(cls))
+    for (std::size_t i = 0; i < e.nargs; ++i) {
+      pool.add(entry_param_name(e.fn, i));
+      pool.add_type(entry_param_type(e.fn, i));
+    }
+}
+
 consteval void pool_properties(string_pool& pool, info cls) {
   for (auto d : make_props(cls)) {
     pool.add(d.name.view());
@@ -788,6 +832,7 @@ consteval std::vector<std::string> make_strings(info cls) {
     pool.add(ci.value.view());
   }
   pool_methods(pool, cls);
+  pool_constructors(pool, cls);
   pool_properties(pool, cls);
   pool_enums(pool, cls);
   return pool.items;

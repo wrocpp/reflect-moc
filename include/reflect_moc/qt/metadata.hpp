@@ -91,11 +91,16 @@ consteval unsigned access_of(info m) {
 // Each FunctionData specialization nests its own FunctionParameter, so the array
 // is built for the Data type that is constructed.
 template <class Data, class D, info M, std::size_t N, std::size_t S = 0>
-constexpr Data function_data(unsigned flags) {
+constexpr typename Data::ParametersArray function_parameters() {
   using Params = typename Data::ParametersArray;
-  constexpr Params params = []<std::size_t... P>(std::index_sequence<P...>) {
+  return []<std::size_t... P>(std::index_sequence<P...>) {
     return Params{{{type_id<D, entry_param_t<M, P, S>>(), string_index<D>(entry_param_name(M, P, S))}...}};
   }(std::make_index_sequence<N>{});
+}
+
+template <class Data, class D, info M, std::size_t N, std::size_t S = 0>
+constexpr Data function_data(unsigned flags) {
+  constexpr auto params = function_parameters<Data, D, M, N, S>();
   if constexpr (Data::IsRevisioned)
     return Data(string_index<D>(meta::identifier_of(M)), string_index<D>(""), flags, method_revision(M),
                 type_id<D, entry_return_t<M>>(), params);
@@ -125,6 +130,23 @@ constexpr auto method_data() {
     else
       return function_data<QtMocHelpers::MethodData<F>, D, e.fn, e.nargs, e.sig>(flags);
   }
+}
+
+// --- constructor rows ------------------------------------------------------------------
+
+template <info M, std::size_t... P>
+auto constructor_signature_for(std::index_sequence<P...>) -> std::type_identity<QtMocHelpers::NoType(entry_param_t<M, P>...)>;
+
+// The constructor type moc names `Constructor(A...)`, cut to its first N parameters.
+template <info M, std::size_t N>
+using constructor_signature_t = typename decltype(constructor_signature_for<M>(std::make_index_sequence<N>{}))::type;
+
+template <class D, std::size_t I>
+constexpr auto constructor_data() {
+  constexpr method_entry e = constructor_entries<D>[I];
+  using Data = QtMocHelpers::ConstructorData<constructor_signature_t<e.fn, e.nargs>>;
+  return Data(string_index<D>(""), access_of(e.fn) | (e.cloned ? QMC::MethodCloned : 0u),
+              function_parameters<Data, D, e.fn, e.nargs>());
 }
 
 // --- property rows ---------------------------------------------------------------------
@@ -194,6 +216,10 @@ struct method_row {
   static constexpr auto make() { return method_data<D, I>(); }
 };
 template <class D, std::size_t I>
+struct constructor_row {
+  static constexpr auto make() { return constructor_data<D, I>(); }
+};
+template <class D, std::size_t I>
 struct property_row {
   static constexpr auto make() { return property_data<D, I>(); }
 };
@@ -207,7 +233,7 @@ constexpr auto meta_content = [] {
   auto methods = make_uint_data<D, method_row, method_total<D>>();
   auto properties = make_uint_data<D, property_row, property_count<D>>();
   auto enums = make_uint_data<D, enum_row, enum_list<D>.size()>();
-  QtMocHelpers::UintData constructors{};
+  auto constructors = make_uint_data<D, constructor_row, constructor_total<D>>();
   constexpr unsigned flags = is_gadget(^^D) ? QMC::PropertyAccessInStaticMetaCall : 0u;  // a gadget has no qt_metacall to read through
   return QtMocHelpers::metaObjectData<D, meta_tag<D>>(flags, string_table<D>{}, methods, properties,
                                                       enums, constructors, classinfo_block<D>());

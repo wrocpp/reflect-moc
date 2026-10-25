@@ -102,6 +102,42 @@ void invoke_method(D* t, int id, void** a) {
   });
 }
 
+// --- constructors ---------------------------------------------------------------------------
+
+// QMetaObject::CreateInstance and ConstructInPlace: args[0] is where the object goes, args[1..] point at the arguments. A
+// clone of a default argument passes fewer, and the constructor's own default supplies the rest.
+template <info Fn, std::size_t N, class D>
+void create_instance(void** args) {
+  [&]<std::size_t... P>(std::index_sequence<P...>) {
+    D* const created = new D(arg_at<Fn, P>(args)...);
+    if (!args[0]) return;
+    // moc stores a QObject class through QObject**, whose address can differ from the D* of a class with several bases
+    if constexpr (std::is_base_of_v<QObject, D>)
+      *static_cast<QObject**>(args[0]) = created;
+    else
+      *static_cast<void**>(args[0]) = created;
+  }(std::make_index_sequence<N>{});
+}
+
+template <info Fn, std::size_t N, class D>
+void construct_in_place(void** args) {
+  // the lambda returns the object: with a body that is only the new-expression, GCC 16.2 makes the lambda consteval
+  [[maybe_unused]] D* const placed = [&]<std::size_t... P>(std::index_sequence<P...>) {
+    return new (args[0]) D(arg_at<Fn, P>(args)...);
+  }(std::make_index_sequence<N>{});
+}
+
+template <class D>
+void construct(QMetaObject::Call c, int id, void** a) {
+  with_index<constructor_total<D>>(id, [&](auto ic) {
+    constexpr method_entry e = constructor_entries<D>[decltype(ic)::value];
+    if (c == QMetaObject::CreateInstance)
+      create_instance<e.fn, e.nargs, D>(a);
+    else
+      construct_in_place<e.fn, e.nargs, D>(a);
+  });
+}
+
 // --- IndexOfMethod -----------------------------------------------------------------------
 
 template <class D, std::size_t I>
@@ -228,6 +264,8 @@ void static_metacall(QObject* o, QMetaObject::Call c, int id, void** a) {
   }();
   switch (c) {
     case QMetaObject::InvokeMetaMethod: invoke_method<D>(t, id, a); break;
+    case QMetaObject::CreateInstance:
+    case QMetaObject::ConstructInPlace: construct<D>(c, id, a); break;
     case QMetaObject::IndexOfMethod: index_of_method<D>(a); break;
     case QMetaObject::RegisterMethodArgumentMetaType: register_method_argument<D>(id, a); break;
     case QMetaObject::ReadProperty:
