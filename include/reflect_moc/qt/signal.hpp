@@ -128,7 +128,7 @@ struct owner_anchor {
 };
 
 template <class... A, meta::info Owner>
-struct signal<void(A...), Owner> {
+struct signal<void(A...), void, void, void, Owner> {
   using signature = void(A...);
   using args_tuple = std::tuple<A...>;
 
@@ -209,11 +209,11 @@ struct static_signal<void(A...), Owner> {
 // Qt's internal namespace: this specialization follows FunctionPointer as it is in Qt 6.10.
 namespace QtPrivate {
 template <class Obj, class... A, std::meta::info Owner>
-struct FunctionPointer<rqt::signal<void(A...), Owner> Obj::*> {
+struct FunctionPointer<rqt::signal<void(A...), void, void, void, Owner> Obj::*> {
   using Object = Obj;
   using Arguments = List<A...>;
   using ReturnType = void;
-  using Function = rqt::signal<void(A...), Owner> Obj::*;
+  using Function = rqt::signal<void(A...), void, void, void, Owner> Obj::*;
   enum { ArgumentCount = sizeof...(A), IsPointerToMemberFunction = true };
   // A signal used as a slot: (o->*f)(args...) on a pointer to a callable data member calls
   // signal::operator(), which emits. Qt passes the receiver as a plain QObject* for anything that is

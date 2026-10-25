@@ -73,6 +73,8 @@ set(limit_static_signal_const_owner_MESSAGE
   "a signal is a non-const member: it cannot be emitted from a const member function")
 set(limit_static_signal_static_member_function_MESSAGE
   "is unavailable for static member functions")
+set(limit_property_ambiguous_write_MESSAGE
+  "rqt::property WRITE .setValue.: ambiguous, several overloads take the property.s type")
 set(limit_observable_container_throwing_move_MESSAGE
   "the value type must be nothrow move constructible and assignable")
 set(limit_observable_selection_builtin_role_MESSAGE "satisfaction of .*ValidRoleList")
@@ -127,6 +129,7 @@ set(RQT_QT_COMPILE_FAIL_TESTS
   limit_observable_selection_duplicate_role
   limit_observable_selection_multi_selected_value
   limit_observable_selection_host_without_signal
+  limit_property_ambiguous_write
   limit_observable_container_throwing_move
   limit_property_index_gap
   limit_rqt_connect_argument_mismatch

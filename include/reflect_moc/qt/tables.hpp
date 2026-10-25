@@ -137,6 +137,7 @@ struct method_entry {
   info fn;
   std::size_t nargs;
   bool cloned;
+  std::size_t sig = 0;  // a signal data member can carry several signatures (rqt::signal<void(int), void(QString)>): the row's
 };
 
 consteval std::size_t default_count(info fn) {
@@ -145,20 +146,37 @@ consteval std::size_t default_count(info fn) {
   return n;
 }
 
-// The argument types of a signal data member, read from the args_tuple alias of its type.
-consteval std::vector<info> signal_param_types(info m) {
+// How many signatures a signal data member carries: the function types among its template arguments (one for the
+// usual member, several for rqt::signal<void(int), void(const QString&)>).
+consteval std::size_t signal_signature_count(info m) {
+  std::size_t n = 0;
+  for (auto a : meta::template_arguments_of(meta::remove_cvref(meta::type_of(m)))) n += meta::is_type(a) && meta::is_function_type(a);
+  return n;
+}
+
+// The argument types of signature `sig` of a signal data member, read from the args_tuple alias of its type (args_tuple for the
+// first signature, args_tuple_1, args_tuple_2 ... for the others).
+consteval std::vector<info> signal_param_types(info m, std::size_t sig = 0) {
   info const t = meta::remove_cvref(meta::type_of(m));
+  std::string const wanted = sig == 0 ? std::string{"args_tuple"} : cat({"args_tuple_", std::string(1, static_cast<char>('0' + sig))});
   for (auto x : meta::members_of(t, unchecked))
-    if (meta::is_type(x) && meta::has_identifier(x) && meta::identifier_of(x) == "args_tuple")
+    if (meta::is_type(x) && meta::has_identifier(x) && meta::identifier_of(x) == wanted)
       return meta::template_arguments_of(meta::dealias(x));
   throw meta::exception("rqt::signal has no args_tuple", m);
 }
 
-// `[[=rqt::names("a, b")]]` on a signal data member: a function type has no parameter names.
-consteval std::string signal_parameter_name(info m, std::size_t index) {
+// `[[=rqt::names("a, b")]]` on a signal data member: a function type has no parameter names. A member with several signatures
+// takes one list per signature, separated by ';': `[[=rqt::names("value; text")]]` (or names("value", "text")).
+consteval std::string signal_parameter_name(info m, std::size_t index, std::size_t sig = 0) {
   if (!has<names>(m)) return {};
   auto const annotation = get<names>(m);  // a named copy: the view must not outlive a temporary
-  std::string_view const list = annotation.list.view();
+  std::string_view list = annotation.list.view();
+  for (std::size_t i = 0; i < sig; ++i) {
+    std::size_t const semicolon = list.find(';');
+    if (semicolon == std::string_view::npos) return {};
+    list.remove_prefix(semicolon + 1);
+  }
+  if (std::size_t const semicolon = list.find(';'); semicolon != std::string_view::npos) list = list.substr(0, semicolon);
   std::size_t begin = 0;
   for (std::size_t i = 0; i < index; ++i) {
     begin = list.find(',', begin);
@@ -172,31 +190,31 @@ consteval std::string signal_parameter_name(info m, std::size_t index) {
   return std::string{item};
 }
 
-consteval std::size_t entry_full_arity(info fn) {
-  return is_data_signal(fn) ? signal_param_types(fn).size() : meta::parameters_of(fn).size();
+consteval std::size_t entry_full_arity(info fn, std::size_t sig = 0) {
+  return is_data_signal(fn) ? signal_param_types(fn, sig).size() : meta::parameters_of(fn).size();
 }
 
 // QPrivateSignal as the last parameter of a signal: a tag only the class can make, so that nothing else can emit the
 // signal. moc leaves it out of the signature and the meta-object; so does rqt (the class declares the struct).
-consteval bool has_private_tag(info fn) {
+consteval bool has_private_tag(info fn, std::size_t sig = 0) {
   if (kind_of(fn) != method_kind::signal_) return false;
-  std::size_t const n = entry_full_arity(fn);
+  std::size_t const n = entry_full_arity(fn, sig);
   if (n == 0) return false;
-  info const t = meta::remove_cvref(is_data_signal(fn) ? signal_param_types(fn)[n - 1]
+  info const t = meta::remove_cvref(is_data_signal(fn) ? signal_param_types(fn, sig)[n - 1]
                                                        : meta::type_of(meta::parameters_of(fn)[n - 1]));
   return meta::is_class_type(t) && meta::has_identifier(t) && meta::identifier_of(t) == "QPrivateSignal";
 }
 
 // The parameters the meta-object lists: all of them, but a QPrivateSignal tag.
-consteval std::size_t entry_arity(info fn) { return entry_full_arity(fn) - (has_private_tag(fn) ? 1 : 0); }
+consteval std::size_t entry_arity(info fn, std::size_t sig = 0) { return entry_full_arity(fn, sig) - (has_private_tag(fn, sig) ? 1 : 0); }
 
 // Q_REVISION(maj, min) and Q_SCRIPTABLE on a slot, an invokable or a signal, as annotations.
 consteval bool has_method_revision(info fn) { return has<revision>(fn); }
 consteval unsigned method_revision(info fn) { return get<revision>(fn).encoded(); }
 consteval unsigned method_extra_flags(info fn) { return has<scriptable_t>(fn) ? QtMocConstants::MethodScriptable : 0u; }
 
-consteval info entry_param_type(info fn, std::size_t i) {
-  return is_data_signal(fn) ? signal_param_types(fn)[i] : meta::type_of(meta::parameters_of(fn)[i]);
+consteval info entry_param_type(info fn, std::size_t i, std::size_t sig = 0) {
+  return is_data_signal(fn) ? signal_param_types(fn, sig)[i] : meta::type_of(meta::parameters_of(fn)[i]);
 }
 
 consteval info entry_return_type(info fn) { return is_data_signal(fn) ? ^^void : meta::return_type_of(fn); }
@@ -205,7 +223,8 @@ consteval bool entry_is_const(info fn) { return !is_data_signal(fn) && meta::is_
 
 consteval void append_entries(std::vector<method_entry>& out, info fn) {
   if (is_data_signal(fn)) {
-    out.push_back({.fn = fn, .nargs = entry_arity(fn), .cloned = false});
+    for (std::size_t sig = 0; sig < signal_signature_count(fn); ++sig)  // one row per signature, in declaration order, as moc orders overloads
+      out.push_back({.fn = fn, .nargs = entry_arity(fn, sig), .cloned = false, .sig = sig});
     return;
   }
   std::size_t const full = entry_arity(fn);
@@ -298,8 +317,8 @@ consteval std::string_view param_name(info p) {
 }
 
 // Name of parameter i of a table entry: the function's own, or from [[=rqt::names]] on a signal member.
-consteval std::string entry_param_name(info fn, std::size_t i) {
-  return is_data_signal(fn) ? signal_parameter_name(fn, i) : std::string{param_name(meta::parameters_of(fn)[i])};
+consteval std::string entry_param_name(info fn, std::size_t i, std::size_t sig = 0) {
+  return is_data_signal(fn) ? signal_parameter_name(fn, i, sig) : std::string{param_name(meta::parameters_of(fn)[i])};
 }
 
 // --- properties ----------------------------------------------------------------------
@@ -321,6 +340,7 @@ struct prop_desc {
   unsigned flags = 0;
   unsigned revision = 0;  // encoded, as QMetaProperty::revision() returns it
   bool writable = false;
+  std::size_t notify_sig = 0;  // which signature of a notify signal member that carries several
 };
 
 template <class Pred>
@@ -340,12 +360,19 @@ consteval info find_function(info cls, info anchor, std::string_view name, std::
 
 consteval std::size_t arity(info fn) { return meta::parameters_of(fn).size(); }
 
+// The signature of a notify signal member that NOTIFY means: the first with at most one argument, as moc takes the first signal of the name.
+consteval std::size_t notify_signature(info notify) {
+  for (std::size_t sig = 0; sig < (is_data_signal(notify) ? signal_signature_count(notify) : 1); ++sig)
+    if (entry_arity(notify, sig) <= 1) return sig;
+  return 0;
+}
+
 // A NOTIFY names a signal: an annotated function or a signal data member, with at most one argument.
 consteval info resolve_notify(info cls, info anchor, std::string_view name) {
   bool seen = false;
   for (auto m : meta::members_of(cls, unchecked)) {
     if (!meta::has_identifier(m) || meta::identifier_of(m) != name) continue;
-    if (kind_of(m) == method_kind::signal_ && entry_arity(m) <= 1) return m;
+    if (kind_of(m) == method_kind::signal_ && entry_arity(m, notify_signature(m)) <= 1) return m;
     seen = true;
   }
   throw meta::exception(seen ? cat({"rqt::property NOTIFY '", name, "': is not an rqt::signal with at most one parameter"})
@@ -354,16 +381,47 @@ consteval info resolve_notify(info cls, info anchor, std::string_view name) {
                         anchor);
 }
 
+// The setter moc binds: it generates `_t->name(*reinterpret_cast<T*>(_v))` with T the property's type, so C++ overload
+// resolution picks it. An overload whose parameter is the type itself (const and reference removed) wins; otherwise the one
+// overload the type converts to; with several and no exact one the call would be ambiguous in C++, and so it is here.
+consteval info resolve_write(info cls, info anchor, std::string_view name, info type) {
+  info exact = absent();
+  info converted = absent();
+  std::size_t viable = 0;
+  bool seen = false;
+  for (auto m : meta::members_of(cls, unchecked)) {
+    if (!meta::is_function(m) || !meta::has_identifier(m) || meta::identifier_of(m) != name) continue;
+    seen = true;
+    if (arity(m) != 1) continue;
+    info const parameter = meta::remove_cvref(meta::type_of(meta::parameters_of(m)[0]));
+    if (parameter == type) {
+      if (!present(exact)) exact = m;
+    } else if (meta::is_convertible_type(type, parameter)) {
+      if (!present(converted)) converted = m;
+      ++viable;
+    }
+  }
+  if (present(exact)) return exact;
+  if (viable == 1) return converted;
+  throw meta::exception(!seen ? cat({"rqt::property WRITE '", name, "': no member function of that name in ", meta::identifier_of(cls)})
+                        : viable == 0 ? cat({"rqt::property WRITE '", name, "': no overload takes the property's type (", meta::display_string_of(type), ")"})
+                                      : cat({"rqt::property WRITE '", name, "': ambiguous, several overloads take the property's type (",
+                                             meta::display_string_of(type), ") by a conversion and none takes it exactly"}),
+                        anchor);
+}
+
 consteval void resolve_accessors(prop_desc& d, info cls, property const& p) {
   if (!p.write.view().empty()) {
-    d.write = find_function(cls, d.anchor, p.write.view(), "WRITE", [](info m) { return arity(m) == 1; },
-                            "needs a member function with one parameter");
+    d.write = resolve_write(cls, d.anchor, p.write.view(), d.type);
     d.writable = true;
   }
   if (!p.reset.view().empty())
     d.reset = find_function(cls, d.anchor, p.reset.view(), "RESET", [](info m) { return arity(m) == 0; },
                             "needs a member function without parameters");
-  if (!p.notify.view().empty()) d.notify = resolve_notify(cls, d.anchor, p.notify.view());
+  if (!p.notify.view().empty()) {
+    d.notify = resolve_notify(cls, d.anchor, p.notify.view());
+    d.notify_sig = notify_signature(d.notify);
+  }
 }
 
 consteval info find_data_member(info cls, info anchor, std::string_view name) {
@@ -507,6 +565,7 @@ struct prop_row {
   unsigned flags = 0;
   unsigned revision = 0;
   bool writable = false;
+  std::size_t notify_sig = 0;
 };
 
 consteval std::size_t position_of(info cls, info m) {
@@ -533,7 +592,8 @@ consteval std::vector<prop_row> make_prop_rows(info cls) {
                    .name = d.name,
                    .flags = d.flags,
                    .revision = d.revision,
-                   .writable = d.writable});
+                   .writable = d.writable,
+                   .notify_sig = d.notify_sig});
   return out;
 }
 
@@ -553,7 +613,8 @@ consteval prop_desc expand_prop(info cls, prop_row const& r) {
               .name = r.name,
               .flags = r.flags,
               .revision = r.revision,
-              .writable = r.writable};
+              .writable = r.writable,
+              .notify_sig = r.notify_sig};
   d.type = present(d.member) ? meta::remove_cvref(meta::type_of(d.member))
                              : meta::remove_cvref(meta::return_type_of(d.read));
   return d;
@@ -565,7 +626,7 @@ consteval prop_desc property_at(std::size_t i) {
 }
 
 consteval int notify_index(info cls, prop_desc const& d) {
-  return present(d.notify) ? entry_index(cls, d.notify) : -1;
+  return present(d.notify) ? entry_index(cls, d.notify) + static_cast<int>(d.notify_sig) : -1;
 }
 
 // --- enums and class info ------------------------------------------------------------
@@ -656,9 +717,9 @@ consteval void pool_methods(string_pool& pool, info cls) {
   for (auto e : make_method_entries(cls)) {
     pool.add(meta::identifier_of(e.fn));
     pool.add_type(entry_return_type(e.fn));
-    for (std::size_t i = 0; i < entry_arity(e.fn); ++i) {
-      pool.add(entry_param_name(e.fn, i));
-      pool.add_type(entry_param_type(e.fn, i));
+    for (std::size_t i = 0; i < entry_arity(e.fn, e.sig); ++i) {
+      pool.add(entry_param_name(e.fn, i, e.sig));
+      pool.add_type(entry_param_type(e.fn, i, e.sig));
     }
   }
 }

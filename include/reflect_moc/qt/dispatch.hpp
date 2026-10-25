@@ -71,23 +71,23 @@ decltype(auto) call(C* self, A&&... a) {
   }
 }
 
-template <info Fn, std::size_t P>
-using param_t = std::remove_cvref_t<entry_param_t<Fn, P>>;
+template <info Fn, std::size_t P, std::size_t S = 0>
+using param_t = std::remove_cvref_t<entry_param_t<Fn, P, S>>;
 
-template <info Fn, std::size_t P>
+template <info Fn, std::size_t P, std::size_t S = 0>
 decltype(auto) arg_at(void** args) {
-  return *static_cast<param_t<Fn, P>*>(args[P + 1]);
+  return *static_cast<param_t<Fn, P, S>*>(args[P + 1]);
 }
 
-// args[0] is the return slot, args[1..] point at the arguments.
-template <info Fn, std::size_t N, class C>
+// args[0] is the return slot, args[1..] point at the arguments. S is the signature of a signal member that carries several.
+template <info Fn, std::size_t N, class C, std::size_t S = 0>
 void call_with_args(C* self, void** args) {
   [&]<std::size_t... P>(std::index_sequence<P...>) {
     using R = entry_return_t<Fn>;
     if constexpr (std::is_void_v<R>) {
-      call<Fn>(self, arg_at<Fn, P>(args)...);
+      call<Fn>(self, arg_at<Fn, P, S>(args)...);
     } else {
-      std::remove_cvref_t<R> r = call<Fn>(self, arg_at<Fn, P>(args)...);
+      std::remove_cvref_t<R> r = call<Fn>(self, arg_at<Fn, P, S>(args)...);
       if (args[0]) *static_cast<std::remove_cvref_t<R>*>(args[0]) = std::move(r);
     }
   }(std::make_index_sequence<N>{});
@@ -97,7 +97,7 @@ template <class D>
 void invoke_method(D* t, int id, void** a) {
   with_index<method_total<D>>(id, [&](auto ic) {
     constexpr method_entry e = method_entries<D>[decltype(ic)::value];
-    call_with_args<e.fn, e.nargs>(t, a);
+    call_with_args<e.fn, e.nargs, D, e.sig>(t, a);
   });
 }
 
@@ -108,7 +108,12 @@ bool match_signal(void** a) {
   constexpr method_entry e = method_entries<D>[I];
   if constexpr (e.cloned || kind_of(e.fn) != method_kind::signal_)
     return false;
-  else if constexpr (is_data_signal(e.fn))  // a private signal member has no pointer a caller could name
+  else if constexpr (is_data_signal(e.fn) && signal_signature_count(e.fn) > 1) {
+    // a member with several signatures is named through rqt::overload, which carries the row (signal_overloads.hpp)
+    using Set = std::remove_cvref_t<typename[:meta::type_of(e.fn):]>;
+    using Selection = signal_selection<typename[:meta::parent_of(e.fn):], Set, signature_t<e.fn, e.nargs, e.sig>, e.sig>;
+    return meta::is_public(e.fn) && QtMocHelpers::indexOfMethod<Selection>(a, Selection{&[:e.fn:], e.sig}, static_cast<int>(I));
+  } else if constexpr (is_data_signal(e.fn))  // a private signal member has no pointer a caller could name
     return meta::is_public(e.fn) && QtMocHelpers::indexOfMethod<decltype(&[:e.fn:])>(a, &[:e.fn:], static_cast<int>(I));
   else
     return QtMocHelpers::indexOfMethod<decltype(member_pointer<e.fn>())>(a, member_pointer<e.fn>(),
@@ -124,13 +129,13 @@ void index_of_method(void** a) {
 
 // --- registering argument metatypes --------------------------------------------------------
 
-template <info Fn, std::size_t N>
+template <info Fn, std::size_t N, std::size_t S = 0>
 void register_argument(void** a) {
   auto* out = static_cast<QMetaType*>(a[0]);
   int const wanted = *static_cast<int*>(a[1]);
   [&]<std::size_t... P>(std::index_sequence<P...>) {
-    (((wanted == static_cast<int>(P) && named_type_v<param_t<Fn, P>>)
-          ? (*out = QMetaType::fromType<param_t<Fn, P>>(), true)
+    (((wanted == static_cast<int>(P) && named_type_v<param_t<Fn, P, S>>)
+          ? (*out = QMetaType::fromType<param_t<Fn, P, S>>(), true)
           : false) ||
      ...);
   }(std::make_index_sequence<N>{});
@@ -141,7 +146,7 @@ void register_method_argument(int id, void** a) {
   *static_cast<QMetaType*>(a[0]) = QMetaType();
   with_index<method_total<D>>(id, [&](auto ic) {
     constexpr method_entry e = method_entries<D>[decltype(ic)::value];
-    if constexpr (e.nargs > 0) register_argument<e.fn, e.nargs>(a);
+    if constexpr (e.nargs > 0) register_argument<e.fn, e.nargs, e.sig>(a);
   });
 }
 
@@ -158,7 +163,7 @@ void read_property(D* t, void* v) {
 template <prop_desc d, class D>
 void emit_notify(D* t) {
   if constexpr (present(d.notify)) {
-    if constexpr (entry_arity(d.notify) == 0)
+    if constexpr (entry_arity(d.notify, d.notify_sig) == 0)
       call<d.notify>(t);
     else
       call<d.notify>(t, member_ref<d.member>(t));

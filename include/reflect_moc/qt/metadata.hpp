@@ -70,19 +70,19 @@ struct signature_of<R, true, A...> {
 };
 
 // The parameter and return types of a table entry, whether it is a function or a signal data member.
-template <info M, std::size_t P>
-using entry_param_t = typename[:entry_param_type(M, P):];
+template <info M, std::size_t P, std::size_t S = 0>
+using entry_param_t = typename[:entry_param_type(M, P, S):];
 
 template <info M>
 using entry_return_t = typename[:entry_return_type(M):];
 
-template <info M, std::size_t... P>
+template <info M, std::size_t S, std::size_t... P>
 auto signature_for(std::index_sequence<P...>)
-    -> std::type_identity<typename signature_of<entry_return_t<M>, entry_is_const(M), entry_param_t<M, P>...>::type>;
+    -> std::type_identity<typename signature_of<entry_return_t<M>, entry_is_const(M), entry_param_t<M, P, S>...>::type>;
 
-// The function type of M cut to its first N parameters.
-template <info M, std::size_t N>
-using signature_t = typename decltype(signature_for<M>(std::make_index_sequence<N>{}))::type;
+// The function type of M (its signature S, for a signal member that carries several) cut to its first N parameters.
+template <info M, std::size_t N, std::size_t S = 0>
+using signature_t = typename decltype(signature_for<M, S>(std::make_index_sequence<N>{}))::type;
 
 consteval unsigned access_of(info m) {
   return meta::is_private(m) ? QMC::AccessPrivate : meta::is_protected(m) ? QMC::AccessProtected : QMC::AccessPublic;
@@ -90,11 +90,11 @@ consteval unsigned access_of(info m) {
 
 // Each FunctionData specialization nests its own FunctionParameter, so the array
 // is built for the Data type that is constructed.
-template <class Data, class D, info M, std::size_t N>
+template <class Data, class D, info M, std::size_t N, std::size_t S = 0>
 constexpr Data function_data(unsigned flags) {
   using Params = typename Data::ParametersArray;
   constexpr Params params = []<std::size_t... P>(std::index_sequence<P...>) {
-    return Params{{{type_id<D, entry_param_t<M, P>>(), string_index<D>(entry_param_name(M, P))}...}};
+    return Params{{{type_id<D, entry_param_t<M, P, S>>(), string_index<D>(entry_param_name(M, P, S))}...}};
   }(std::make_index_sequence<N>{});
   if constexpr (Data::IsRevisioned)
     return Data(string_index<D>(meta::identifier_of(M)), string_index<D>(""), flags, method_revision(M),
@@ -107,23 +107,23 @@ constexpr Data function_data(unsigned flags) {
 template <class D, std::size_t I>
 constexpr auto method_data() {
   constexpr method_entry e = method_entries<D>[I];
-  using F = signature_t<e.fn, e.nargs>;
+  using F = signature_t<e.fn, e.nargs, e.sig>;
   constexpr unsigned flags = access_of(e.fn) | (e.cloned ? QMC::MethodCloned : 0u) | method_extra_flags(e.fn);
   if constexpr (kind_of(e.fn) == method_kind::signal_) {
     if constexpr (has_method_revision(e.fn))
-      return function_data<QtMocHelpers::RevisionedSignalData<F>, D, e.fn, e.nargs>(flags);
+      return function_data<QtMocHelpers::RevisionedSignalData<F>, D, e.fn, e.nargs, e.sig>(flags);
     else
-      return function_data<QtMocHelpers::SignalData<F>, D, e.fn, e.nargs>(flags);
+      return function_data<QtMocHelpers::SignalData<F>, D, e.fn, e.nargs, e.sig>(flags);
   } else if constexpr (kind_of(e.fn) == method_kind::slot_) {
     if constexpr (has_method_revision(e.fn))
-      return function_data<QtMocHelpers::RevisionedSlotData<F>, D, e.fn, e.nargs>(flags);
+      return function_data<QtMocHelpers::RevisionedSlotData<F>, D, e.fn, e.nargs, e.sig>(flags);
     else
-      return function_data<QtMocHelpers::SlotData<F>, D, e.fn, e.nargs>(flags);
+      return function_data<QtMocHelpers::SlotData<F>, D, e.fn, e.nargs, e.sig>(flags);
   } else {
     if constexpr (has_method_revision(e.fn))
-      return function_data<QtMocHelpers::RevisionedMethodData<F>, D, e.fn, e.nargs>(flags);
+      return function_data<QtMocHelpers::RevisionedMethodData<F>, D, e.fn, e.nargs, e.sig>(flags);
     else
-      return function_data<QtMocHelpers::MethodData<F>, D, e.fn, e.nargs>(flags);
+      return function_data<QtMocHelpers::MethodData<F>, D, e.fn, e.nargs, e.sig>(flags);
   }
 }
 
