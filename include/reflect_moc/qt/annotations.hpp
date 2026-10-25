@@ -88,6 +88,7 @@ struct property {
   bool stored = true;
   int index = -1;  // explicit position in the property table; -1: declaration order, after the indexed ones
   rqt::revision revision{};  // REVISION(maj, min); {0, 0}: none
+  short_text bindable{};     // BINDABLE: the zero-argument function that returns the property's QBindable
 };
 
 struct classinfo {
@@ -171,6 +172,7 @@ struct prop_decl {
   bool scriptable = true;
   bool stored = true;
   int revision = 0;
+  short_text bindable{};
 };
 
 namespace detail {
@@ -260,6 +262,7 @@ consteval void parse_keywords(prop_decl& p, std::vector<std::string_view> const&
     else if (k == "CONSTANT") p.constant = true;
     else if (k == "FINAL") p.final = true;
     else if (k == "REQUIRED") p.required = true;
+    else if (k == "BINDABLE") p.bindable = short_text{word_after(k, w, i)};
     else bad_property(std::string{k}.append(" is not supported"));
   }
 }
