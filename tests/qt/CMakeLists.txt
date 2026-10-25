@@ -44,6 +44,7 @@ set(RQT_QT_CAPABILITY_TESTS
   capability_static_signal_queued
   capability_static_signal_qml
   limit_static_signal_other_instance
+  limit_constructor_template_not_listed
   limit_parameter_names_must_agree)
 
 # Each must fail to compile, with this text in the compiler's output.
@@ -108,6 +109,12 @@ set(limit_rqt_property_write_missing_MESSAGE
   "rqt::property WRITE 'setLevl': no member function of that name in Gauge")
 set(limit_method_two_kinds_MESSAGE
   "annotated as more than one of signal_function, slot and invokable")
+set(limit_constructor_private_MESSAGE
+  "rqt: an invokable constructor must be public")
+set(limit_constructor_as_slot_MESSAGE
+  "rqt: a constructor can only be rqt::invokable")
+set(limit_constructor_revision_MESSAGE
+  "rqt::revision and rqt::scriptable are not supported on an invokable constructor")
 set(limit_revision_on_plain_member_MESSAGE
   "rqt::revision and rqt::scriptable go on a signal, a slot or an invokable")
 set(limit_scriptable_on_plain_member_MESSAGE
@@ -125,6 +132,9 @@ set(RQT_QT_COMPILE_FAIL_TESTS
   limit_property_reset_typo
   limit_rqt_property_write_missing
   limit_method_two_kinds
+  limit_constructor_private
+  limit_constructor_as_slot
+  limit_constructor_revision
   limit_revision_on_plain_member
   limit_scriptable_on_plain_member
   limit_observable_selection_builtin_role
