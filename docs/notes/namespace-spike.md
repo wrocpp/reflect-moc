@@ -1,5 +1,11 @@
 # Namespace meta-objects (matrix rows A-04 and D-03): spike
 
+Status: built (branch feat/namespace-meta, `include/reflect_moc/qt/namespace.hpp`, test `parity_namespace_meta`). The note below is the
+spike as written; where the build differs, the matrix rows A-04 and D-03 and `namespace.hpp` are authoritative. Differences: the
+scope key is `namespace_scope<Ns>` with `scope_of`, the ADL pair takes `E const&` and is constrained to enums the namespace
+registers (and the enum behind a registered QFlags), and `check_namespace` also rejects enums in a nested namespace that has no
+meta-object of its own.
+
 **Verdict: build it, with the verdict `partial`.** Everything moc generates for `Q_NAMESPACE`, `Q_ENUM_NS` and `Q_FLAG_NS` can be
 generated, and the result equals moc's, line by line. What does not carry over is the spelling: a namespace is never closed
 for a header-only library, so the user writes three short lines in place of one macro, and the order of those lines
