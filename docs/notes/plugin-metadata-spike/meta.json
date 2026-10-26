@@ -1,0 +1,1 @@
+{ "Keys": ["alpha", "beta"], "Version": 3, "Enabled": true, "Name": "demo", "Ratio": 1.5, "Nested": {"a": null, "b": -7} }
