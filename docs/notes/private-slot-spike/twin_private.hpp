@@ -1,0 +1,1 @@
+class WidgetPrivate { public: int depth_ = 3; int depth() const { return depth_; } void setDepth(int d) { depth_ = d; } void onTick(int v) { ticks += v; } void reset() { ticks = 0; } int ticks = 0; };
