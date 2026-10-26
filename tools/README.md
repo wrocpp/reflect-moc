@@ -28,11 +28,12 @@ Every spelling it emits lives in `rqt_migrate/syntax.py`. The reflect-moc Qt syn
 | `Q_GADGET` | `[[=rqt::gadget]]` |
 | `Q_INTERFACES` | `[[=rqt::interface{^^I}]]`. Reported **partial**: `qt_metacast` must answer the IID |
 | `QML_ELEMENT`, `QML_NAMED_ELEMENT`, `QML_ANONYMOUS`, `QML_UNCREATABLE` (+ `QML_ATTACHED`) | the macros stay, for the type aliases they declare. A generated `rqt_qml_types.hpp` registers the types under the `qt_add_qml_module` URI and version, and a call to it goes in before each `QQmlEngine` / `QQmlApplicationEngine` |
+| `Q_PROPERTY(... BINDABLE bindableX)` | `.bindable = "bindableX"` in the annotation; `BINDABLE bindableX` stays in the qtlike `RQT_PROPERTY` text |
 | `emit` / `Q_EMIT`, `forever`, `foreach` | dropped, or spelled the way `QT_NO_KEYWORDS` allows |
 | `#include "moc_x.cpp"` / `"x.moc"` | deleted |
 | CMake | AUTOMOC off, C++26, `QT_NO_KEYWORDS`, `-freflection`, the reflect-moc include dir, and `NO_GENERATE_QMLTYPES` on `qt_add_qml_module` |
 | a non-template `Q_OBJECT` base that only declares `const QVariant&` signals, with one class template deriving from it | **folded** into the template: see [Folding a signals-only base](#folding-a-signals-only-base) |
-| signal or slot with default arguments, overloaded signal, property attributes without a field (`DESIGNABLE`, `SCRIPTABLE`, `STORED`, `USER`, `BINDABLE`, `REVISION`), method `Q_REVISION` | migrated, reported **partial** |
+| signal or slot with default arguments, overloaded signal, property attributes without a field (`DESIGNABLE`, `SCRIPTABLE`, `STORED`, `USER`, `REVISION`), method `Q_REVISION` | migrated, reported **partial** |
 | `Q_PRIVATE_SLOT`, `Q_PRIVATE_PROPERTY`, `Q_PLUGIN_METADATA`, `Q_REVISION`, `Q_SCRIPTABLE`, `Q_MOC_INCLUDE`, `Q_NAMESPACE` family, invokable constructors, a READ accessor not declared in the class, a template class (moc's own error), `QML_SINGLETON` / `QML_FOREIGN` / `QML_EXTENDED`, `qt_wrap_cpp`, unknown `Q_*` / `QML_*` macros | left in place, reported **manual** |
 
 ## Folding a signals-only base
