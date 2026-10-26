@@ -211,12 +211,12 @@ class ClassRewriter:
         wrote them (compat.hpp gives the macros their reflect-moc meaning). Each signal gets
         its annotation and body; each slot gets its annotation."""
         for prop in self.cls.get("properties", []):
-            unsupported = [k for k in ("bindable", *syntax.PROPERTY_FLAG_FIELDS)
-                           if k in prop and (k == "bindable" or not isinstance(prop[k], bool))]
+            unsupported = [k for k in syntax.PROPERTY_FLAG_FIELDS
+                           if k in prop and not isinstance(prop[k], bool)]
             if unsupported:
                 self.report.manual(self.rel, prop.get("lineNumber", 0), "Q_PROPERTY",
                                    f"`{prop['name']}` uses {', '.join(k.upper() for k in unsupported)}; "
-                                   "RQT_PROPERTY cannot express it (a function-valued flag or BINDABLE)")
+                                   "RQT_PROPERTY cannot express it (a function-valued flag)")
         members = self.signals_mode == syntax.SIGNALS_MEMBERS
         overloaded = {name for name, _ in _overloads(self.cls.get("signals", []))} if members else set()
         for sig in _dedupe(self.cls.get("signals", [])):
@@ -516,7 +516,7 @@ class ClassRewriter:
         if prop.get("privateClass"):
             self.report.manual(self.rel, line, "Q_PRIVATE_PROPERTY", UNSUPPORTED["Q_PRIVATE_PROPERTY"])
             return
-        unsupported = [k for k in ("bindable", "revision") if k in prop]
+        unsupported = [k for k in ("revision",) if k in prop]
         fields: dict[str, str | bool | int] = {}
         read, member = prop.get("read"), prop.get("member")
         if not (read or member):
@@ -531,7 +531,7 @@ class ClassRewriter:
             fields["name"] = name
         if name in self.property_index:
             fields["index"] = self.property_index[name]
-        for key in ("write", "notify", "reset"):
+        for key in ("write", "notify", "reset", "bindable"):
             if prop.get(key):
                 fields[key] = prop[key]
         for key, default in syntax.PROPERTY_FLAG_FIELDS.items():

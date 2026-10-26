@@ -1,0 +1,52 @@
+{
+ "classes": [
+  {
+   "className": "Meter",
+   "lineNumber": 8,
+   "object": true,
+   "properties": [
+    {
+     "bindable": "bindableLevel",
+     "constant": false,
+     "designable": true,
+     "final": false,
+     "index": 0,
+     "lineNumber": 11,
+     "name": "level",
+     "notify": "levelChanged",
+     "read": "level",
+     "required": false,
+     "scriptable": true,
+     "stored": true,
+     "type": "int",
+     "user": false,
+     "write": "setLevel"
+    }
+   ],
+   "qualifiedClassName": "Meter",
+   "signals": [
+    {
+     "access": "public",
+     "arguments": [
+      {
+       "name": "level",
+       "type": "int"
+      }
+     ],
+     "index": 0,
+     "lineNumber": 20,
+     "name": "levelChanged",
+     "returnType": "void"
+    }
+   ],
+   "superClasses": [
+    {
+     "access": "public",
+     "name": "QObject"
+    }
+   ]
+  }
+ ],
+ "inputFile": "meter.h",
+ "outputRevision": 69
+}

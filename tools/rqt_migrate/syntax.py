@@ -142,7 +142,7 @@ def property(fields: dict[str, str | bool | int]) -> str:
     differ from the default are passed; they are emitted in the library's order.
     """
     inner = []
-    for key in PROPERTY_NAME_FIELDS + tuple(PROPERTY_FLAG_FIELDS) + ("index",):
+    for key in PROPERTY_NAME_FIELDS + tuple(PROPERTY_FLAG_FIELDS) + ("index", "bindable"):
         if key in fields:
             value = fields[key]
             if isinstance(value, bool):
