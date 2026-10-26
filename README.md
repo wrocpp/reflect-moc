@@ -79,7 +79,8 @@ quoted here. Stripped executables were within 0.2 percent of the moc builds.
 ## Limits
 
 - Overloaded signals cannot be data members (two members cannot share a name); use the function form `[[=rqt::signal_function]]`.
-- `Q_GADGET`, `Q_NAMESPACE`, `Q_PLUGIN_METADATA` and `QML_ELEMENT` are not supported.
+- `Q_GADGET`, `Q_NAMESPACE` and `QML_ELEMENT` are not supported. `Q_PLUGIN_METADATA` is, in part: `RQT_PLUGIN_METADATA` after an
+  `#embed` block, JSON up to 32 KiB, GCC only ([`include/reflect_moc/qt/README.md`](include/reflect_moc/qt/README.md), "Plugin metadata").
 - A mixin class `rqt::Object<B>` needs `bind()` in its constructor and cannot have data-member signals.
 - `rqt::connect` does not accept a static signal; use `QObject::connect`.
 - A class template with signals builds, but Qt sees a specialization under the compiler's spelling of it in Qt's normalized form (`ObservableContainer<QHash<uint,Sample>>` on GCC 16.2), so a pointer to it works in a `QVariant` and as a QML type; name it with `RQT_CLASS_NAME` or `[[=rqt::class_name{"..."}]]` for a stable name. A signal of type `qsizetype` is registered as `qlonglong`.
