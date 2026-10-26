@@ -233,9 +233,17 @@ constexpr auto meta_content = [] {
   auto methods = make_uint_data<D, method_row, method_total<D>>();
   auto properties = make_uint_data<D, property_row, property_count<D>>();
   auto enums = make_uint_data<D, enum_row, enum_list<D>.size()>();
-  auto constructors = make_uint_data<D, constructor_row, constructor_total<D>>();
-  constexpr unsigned flags = is_gadget(^^D) ? QMC::PropertyAccessInStaticMetaCall : 0u;  // a gadget has no qt_metacall to read through
-  return QtMocHelpers::metaObjectData<D, meta_tag<D>>(flags, string_table<D>{}, methods, properties,
+  // a gadget has no qt_metacall to read through, and a namespace has no object at all (moc passes the flag and void for it)
+  constexpr bool in_namespace = is_namespace_scope(^^D);
+  auto constructors = [] {
+    if constexpr (in_namespace)
+      return QtMocHelpers::UintData{};
+    else
+      return make_uint_data<D, constructor_row, constructor_total<D>>();
+  }();
+  constexpr unsigned flags = (is_gadget(^^D) || in_namespace) ? QMC::PropertyAccessInStaticMetaCall : 0u;
+  using Object = std::conditional_t<in_namespace, void, D>;
+  return QtMocHelpers::metaObjectData<Object, meta_tag<D>>(flags, string_table<D>{}, methods, properties,
                                                       enums, constructors, classinfo_block<D>());
 }();
 

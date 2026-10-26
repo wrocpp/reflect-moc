@@ -24,12 +24,51 @@ constexpr QMetaObject::SuperData super_of();
 
 }  // namespace detail
 
+// The QMetaObject of a namespace (Q_NAMESPACE): null super, no static meta-call, the enums of the namespace as they are
+// declared above the place this is named. `Ns` is the namespace the template-id is written in.
+//   namespace N { enum class [[= rqt::enum_]] E { a, b }; RQT_NAMESPACE }
+// A variable template named by an initializer is instantiated where it is named, so an enum declared after it is missed;
+// rqt::check_namespace (namespace.hpp) makes that an error.
+template <meta::info Ns = meta::current_namespace()>
+inline constexpr QMetaObject namespace_meta = {
+    {QMetaObject::SuperData{}, detail::meta_content<detail::namespace_scope<Ns>>.staticData.stringdata,
+     detail::meta_content<detail::namespace_scope<Ns>>.staticData.data, nullptr, nullptr,
+     detail::meta_content<detail::namespace_scope<Ns>>.relocatingData.metaTypes, nullptr}};
+
+namespace detail {
+
+// A class in a namespace that has an rqt::namespace_meta lists it as related, as moc writes `qt_meta_extradata`: it is how
+// QMetaProperty::enumerator() finds an enum declared in the namespace.
+template <info Ns>
+inline constexpr QMetaObject::SuperData namespace_extradata[] = {QMetaObject::SuperData::link<namespace_meta<Ns>>(),
+                                                                  QMetaObject::SuperData{}};
+
+// The namespace of a class declares a reference `staticMetaObject` (moc's own is not a reference, and is not ours).
+consteval bool has_namespace_meta(info ns) {
+  if (!meta::is_namespace(ns) || !meta::has_identifier(ns)) return false;  // the global namespace is huge and has none
+  for (auto m : meta::members_of(ns, unchecked))
+    if (meta::is_variable(m) && meta::has_identifier(m) && meta::identifier_of(m) == "staticMetaObject")
+      return meta::is_reference_type(meta::type_of(m));
+  return false;
+}
+
+template <class D>
+constexpr QMetaObject::SuperData const* related_meta_objects() {
+  constexpr info parent = meta::parent_of(^^D);
+  if constexpr (has_namespace_meta(parent))
+    return namespace_extradata<parent>;
+  else
+    return nullptr;
+}
+
+}  // namespace detail
+
 // The QMetaObject of D. A variable template, so it exists for every reflected
 // class without a line in the class.
 template <class D>
 inline constexpr QMetaObject static_meta_object = {
     {detail::super_of<D>(), detail::meta_content<D>.staticData.stringdata, detail::meta_content<D>.staticData.data,
-     &detail::static_metacall<D>, nullptr, detail::meta_content<D>.relocatingData.metaTypes, nullptr}};
+     &detail::static_metacall<D>, detail::related_meta_objects<D>(), detail::meta_content<D>.relocatingData.metaTypes, nullptr}};
 
 // The tier B opt-in as one line inside the class:
 //   static inline QMetaObject const& staticMetaObject = rqt::meta_of<Worker>();   (RQT_META_OBJECT(Worker);)

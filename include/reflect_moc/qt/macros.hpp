@@ -2,6 +2,7 @@
 // Q_PROPERTY text. Slots, invokables and signals stay annotations ([[=rqt::slot]]).
 #pragma once
 
+#include "namespace.hpp"
 #include "object.hpp"
 
 #include <QtCore/QCoreApplication>
@@ -79,3 +80,11 @@
 // Q_PROPERTY(type name READ r WRITE w NOTIFY n ...): the argument text is parsed at compile time.
 #define RQT_PROPERTY(...) \
   static constexpr ::rqt::prop_decl RQT_UNIQUE(rqt_property_) = ::rqt::parse_property(#__VA_ARGS__);
+
+// Q_NAMESPACE for the namespace it is written in, after the enums it registers (see namespace.hpp): the ADL pair that
+// Q_ENUM_NS defines, the meta-object, and the check that no enum comes after it.
+#define RQT_NAMESPACE                                                                                       \
+  using ::rqt::qt_getEnumMetaObject;                                                                        \
+  using ::rqt::qt_getEnumName;                                                                              \
+  inline ::QMetaObject const& staticMetaObject = ::rqt::namespace_meta<>;                                   \
+  inline bool const rqt_namespace_checked_ = ::rqt::check_namespace<>();

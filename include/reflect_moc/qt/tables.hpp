@@ -49,6 +49,16 @@ using info = meta::info;
 
 constexpr auto unchecked = meta::access_context::unchecked();
 
+// The key of the tables below for a namespace: `namespace_scope<Ns>` stands where the class D stands for a class, and
+// scope_of turns either back into the reflection the consteval helpers read. A namespace has enums and nothing else (moc
+// reads no methods, properties or constructors from Q_NAMESPACE either).
+template <info Ns>
+struct namespace_scope {};
+
+consteval bool is_namespace_scope(info t) { return meta::has_template_arguments(t) && meta::template_of(t) == ^^namespace_scope; }
+
+consteval info scope_of(info t) { return is_namespace_scope(t) ? meta::extract<info>(meta::template_arguments_of(t)[0]) : t; }
+
 consteval std::string cat(std::initializer_list<std::string_view> parts) {
   std::string s;
   for (auto p : parts) s.append(p);
@@ -239,6 +249,7 @@ consteval void append_entries(std::vector<method_entry>& out, info fn) {
 
 consteval std::vector<method_entry> make_method_entries(info cls) {
   std::vector<method_entry> out;
+  if (meta::is_namespace(cls)) return out;
   for (auto kind : {method_kind::signal_, method_kind::slot_, method_kind::invokable_})
     for (auto m : meta::members_of(cls, unchecked))
       if (kind_of(m) == kind) {
@@ -267,7 +278,7 @@ consteval void check_method_annotations(info cls) {
 }
 
 consteval std::vector<method_entry> make_checked_method_entries(info cls) {
-  check_method_annotations(cls);
+  if (!meta::is_namespace(cls)) check_method_annotations(cls);
   return make_method_entries(cls);
 }
 
@@ -306,7 +317,7 @@ template <class D>
 inline constexpr std::size_t constructor_total = constructor_entries<D>.size();
 
 template <class D>
-inline constexpr auto method_entries = std::define_static_array(make_checked_method_entries(^^D));
+inline constexpr auto method_entries = std::define_static_array(make_checked_method_entries(scope_of(^^D)));
 
 template <class D>
 inline constexpr std::size_t method_total = method_entries<D>.size();
@@ -580,6 +591,7 @@ struct indexed_prop {
 consteval std::vector<prop_desc> make_props(info cls) {
   std::vector<indexed_prop> indexed;
   std::vector<prop_desc> rest;
+  if (meta::is_namespace(cls)) return {};
   for (auto m : meta::members_of(cls, unchecked)) {
     property annotation{};
     prop_desc d;
@@ -663,7 +675,7 @@ consteval std::vector<prop_row> make_prop_rows(info cls) {
 }
 
 template <class D>
-inline constexpr auto property_rows = std::define_static_array(make_prop_rows(^^D));
+inline constexpr auto property_rows = std::define_static_array(make_prop_rows(scope_of(^^D)));
 
 template <class D>
 inline constexpr std::size_t property_count = property_rows<D>.size();
@@ -704,7 +716,9 @@ struct enum_entry {
 };
 
 consteval bool is_enum_declaration(info m) {
-  return meta::is_variable(m) && meta::is_static_member(m) && meta::remove_cvref(meta::type_of(m)) == ^^enum_decl;
+  // a static member of a class, or a variable of a namespace (Q_FLAG_NS)
+  return meta::is_variable(m) && (meta::is_static_member(m) || meta::is_namespace(meta::parent_of(m))) &&
+         meta::remove_cvref(meta::type_of(m)) == ^^enum_decl;
 }
 
 // Annotated enums first ([[=rqt::enum_]], [[=rqt::flag]]), then RQT_ENUM / RQT_FLAG in declaration order.
@@ -731,7 +745,7 @@ consteval std::string_view enum_name(enum_entry const& e) { return meta::identif
 consteval std::string_view enum_alias(enum_entry const& e) { return meta::identifier_of(enum_real(e)); }
 
 template <class D>
-inline constexpr auto enum_list = std::define_static_array(make_enums(^^D));
+inline constexpr auto enum_list = std::define_static_array(make_enums(scope_of(^^D)));
 
 // QMetaEnum::fromType<E>() calls qt_getEnumMetaObject(E) and qt_getEnumName(E), which RQT_OBJECT declares as friend
 // templates (the way Q_ENUM declares a friend per enum). `Tag` is a type nested in the class that declares them, so its
@@ -762,7 +776,7 @@ consteval std::vector<classinfo> make_classinfos(info cls) {
 }
 
 template <class D>
-inline constexpr auto classinfo_list = std::define_static_array(make_classinfos(^^D));
+inline constexpr auto classinfo_list = std::define_static_array(make_classinfos(scope_of(^^D)));
 
 // --- the string pool -----------------------------------------------------------------
 
@@ -845,7 +859,7 @@ consteval std::span<char const* const> string_list(info cls) {
 }
 
 template <class D>
-inline constexpr std::span<char const* const> strings = string_list(^^D);
+inline constexpr std::span<char const* const> strings = string_list(scope_of(^^D));
 
 template <class D>
 consteval unsigned string_index(std::string_view s) {

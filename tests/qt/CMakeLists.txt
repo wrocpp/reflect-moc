@@ -115,6 +115,10 @@ set(limit_constructor_as_slot_MESSAGE
   "rqt: a constructor can only be rqt::invokable")
 set(limit_constructor_revision_MESSAGE
   "rqt::revision and rqt::scriptable are not supported on an invokable constructor")
+set(limit_namespace_late_enum_MESSAGE
+  "an enum annotated rqt::enum_ or rqt::flag is declared after RQT_NAMESPACE")
+set(limit_namespace_inline_MESSAGE
+  "an enum is registered in a namespace nested in this one")
 set(limit_revision_on_plain_member_MESSAGE
   "rqt::revision and rqt::scriptable go on a signal, a slot or an invokable")
 set(limit_scriptable_on_plain_member_MESSAGE
@@ -135,6 +139,8 @@ set(RQT_QT_COMPILE_FAIL_TESTS
   limit_constructor_private
   limit_constructor_as_slot
   limit_constructor_revision
+  limit_namespace_late_enum
+  limit_namespace_inline
   limit_revision_on_plain_member
   limit_scriptable_on_plain_member
   limit_observable_selection_builtin_role
@@ -230,6 +236,16 @@ set_target_properties(capability_static_metaobject_two_tus PROPERTIES AUTOMOC OF
 target_include_directories(capability_static_metaobject_two_tus PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 add_test(NAME capability_static_metaobject_two_tus COMMAND capability_static_metaobject_two_tus)
 set_tests_properties(capability_static_metaobject_two_tus PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen" LABELS qt)
+
+# A namespace meta-object in a header, two translation units, one executable; LTO checks the one-definition rule.
+add_executable(capability_namespace_two_tus capability_namespace_two_tus_a.cpp capability_namespace_two_tus_b.cpp)
+target_link_libraries(capability_namespace_two_tus PRIVATE ${RQT_QT_LIBS})
+target_compile_options(capability_namespace_two_tus PRIVATE -flto -Wodr -Wlto-type-mismatch)
+target_link_options(capability_namespace_two_tus PRIVATE -flto -Wodr -Wlto-type-mismatch -Werror)
+set_target_properties(capability_namespace_two_tus PROPERTIES AUTOMOC OFF AUTOUIC OFF AUTORCC OFF)
+target_include_directories(capability_namespace_two_tus PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+add_test(NAME capability_namespace_two_tus COMMAND capability_namespace_two_tus)
+set_tests_properties(capability_namespace_two_tus PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen" LABELS qt)
 
 # The oracle: the only target that runs the real moc, on purpose, to compare its output with ours.
 add_executable(capability_differential_against_moc capability_differential_against_moc.cpp differential_moc.h)
