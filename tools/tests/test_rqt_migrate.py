@@ -45,6 +45,24 @@ def items(result, construct: str, status: str | None = None):
     return [i for i in result.report.items if i.construct == construct and (status is None or i.status == status)]
 
 
+class Bindable(unittest.TestCase):
+    def test_capability_bindable_is_carried_by_the_annotation(self):
+        result = run_fixture("bindable")
+        self.assertIn('[[=rqt::property{.write = "setLevel", .notify = "levelChanged", .bindable = "bindableLevel"}]]',
+                      result.files["meter.h"])
+        self.assertEqual(items(result, "Q_PROPERTY", PARTIAL), [])
+        self.assertEqual(items(result, "Q_PROPERTY", MANUAL), [])
+
+    def test_capability_bindable_is_kept_by_the_qtlike_text(self):
+        result = run_fixture("bindable", syntax.QTLIKE, macros=syntax.MACROS_RQT)
+        self.assertIn("BINDABLE bindableLevel)", result.files["meter.h"])
+        self.assertEqual(items(result, "Q_PROPERTY", MANUAL), [])
+
+    def test_capability_bindable_comes_after_the_index_in_the_annotation(self):
+        self.assertEqual(syntax.property({"bindable": "b", "index": 2, "write": "w"}),
+                         '[[=rqt::property{.write = "w", .index = 2, .bindable = "b"}]]')
+
+
 class Rewrites(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
