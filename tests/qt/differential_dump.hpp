@@ -41,6 +41,26 @@ inline QStringList dump_methods(QMetaObject const* mo) {
   return out;
 }
 
+// Invokable constructors: the rows a QMetaObject lists for newInstance and for a JS `new`, with the cloned rows of a default
+// argument (docs/moc-parity.md B-13). A constructor has no return type and its class name is the method name.
+inline QStringList dump_constructors(QMetaObject const* mo) {
+  QStringList out;
+  for (int i = 0; i < mo->constructorCount(); ++i) {
+    QMetaMethod const c = mo->constructor(i);
+    out << strip_namespace(QString{"constructor %1 %2 access=%3 type=%4 attrs=%5 params=%6 names=%7 tag='%8' rev=%9"}
+                               .arg(i)
+                               .arg(QString::fromUtf8(c.methodSignature()))
+                               .arg(static_cast<int>(c.access()))
+                               .arg(static_cast<int>(c.methodType()))
+                               .arg(c.attributes())
+                               .arg(parameter_type_names(c))
+                               .arg(join_names(c.parameterNames()))
+                               .arg(QString::fromUtf8(c.tag()))
+                               .arg(c.revision()));
+  }
+  return out;
+}
+
 inline QStringList dump_properties(QMetaObject const* mo) {
   QStringList out;
   for (int i = mo->propertyOffset(); i < mo->propertyCount(); ++i) {
@@ -98,12 +118,12 @@ inline QStringList dump_class_info(QMetaObject const* mo) {
   return out;
 }
 
-// One class level: its name, its superclass and every own method, property, enum and class info.
+// One class level: its name, its superclass and every own method, constructor, property, enum and class info.
 inline QStringList dump_class(QMetaObject const* mo) {
   QStringList out;
   out << strip_namespace(QString{"class %1 super=%2"}
                              .arg(QString::fromUtf8(mo->className()))
                              .arg(QString::fromUtf8(mo->superClass() ? mo->superClass()->className() : "")));
-  out << dump_class_info(mo) << dump_enums(mo) << dump_properties(mo) << dump_methods(mo);
+  out << dump_class_info(mo) << dump_enums(mo) << dump_properties(mo) << dump_methods(mo) << dump_constructors(mo);
   return out;
 }
