@@ -1,0 +1,23 @@
+{
+  "k": 0,
+  "k\u0000": 1,
+  "k\u0000\u0000": 2,
+  "ke": 3,
+  "kez": 4,
+  "prefixxx1": 5,
+  "prefixxx0": 6,
+  "prefixxx10": 7,
+  "prefixxx": 8,
+  "prefixxxA": 9,
+  "prefixxx\u00ff": 10,
+  "Prefixxx0": 11,
+  "": 12,
+  "a": 13,
+  "ab": 14,
+  "abcdefgh": 15,
+  "abcdefgh0": 16,
+  "abcdefg": 17,
+  "abcdefghi": 18,
+  "abcdefgh": 19,
+  "nested": {"zz": 1, "zy": 2, "zzzzzzzzzzzz": 3, "zzzzzzzzzzzy": 4}
+}

@@ -1,0 +1,8 @@
+{
+  "plain": "\"quoted\" \\ \/ \b \f \n \r \t",
+  "bmp": "caf\u00e9 \u20ac \u4e2d \uFFE0",
+  "pair": "\ud83d\ude00 and \uD83D\uDE00 and \ud800\udc00 and \udbff\udfff",
+  "key\ud83d\ude00": 1,
+  "k\u00e9": 2,
+  "mixed": ["\u0041\u0042", "a\u0062c", ""]
+}
