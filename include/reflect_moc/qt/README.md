@@ -51,7 +51,8 @@ class Sensor : public QObject {
   `Q_ENUM`, `Q_FLAG` and `Q_CLASSINFO` to these, and `emit`/`Q_EMIT` to `::rqt::emitter{this},` (it fires an
   `rqt::static_signal` call, and a Qt signal call still works), so a moc class compiles with its macros unchanged
   (`reflect_moc/compat_end.hpp` hands them back). Slots and signals still need `[[=rqt::slot]]` and an
-  `rqt::signal` member; `Q_GADGET`, `Q_NAMESPACE`, `Q_PLUGIN_METADATA`, `QML_ELEMENT` are not mapped.
+  `rqt::signal` member; `Q_GADGET`, `Q_NAMESPACE`, `Q_PLUGIN_METADATA`, `QML_ELEMENT` are not mapped (for a plugin, see
+  "Plugin metadata" below).
 - Qt classes, QML: a class with `RQT_OBJECT` is accepted by `qobject_cast`, pointer-to-member and functor
   connect and `qmlRegisterType<T>`/`rqt::register_qml<T>` with no opt-in (`capability_qt_like_syntax`,
   `capability_static_metaobject_one_line`). The meta-object equals the one moc generates for the same
@@ -376,6 +377,39 @@ class SampleStore : public ObservableContainer<QHash<unsigned, Sample>> {
 - `RQT_OBJECT_STATIC` with `static inline rqt::static_signal<...>` works in a template too, and the class is exactly
   as large as `QObject`.
 
+## Plugin metadata
+
+`Q_PLUGIN_METADATA(IID "x" FILE "x.json")` is `RQT_PLUGIN_METADATA` (`#include <reflect_moc/qt/plugin.hpp>`, which `qt.hpp` does
+not include). It turns the JSON into the CBOR that moc writes, byte for byte, in constant evaluation, and hands it to Qt's own
+`QT_MOC_EXPORT_PLUGIN_V2`, so a `QPluginLoader` (or `Q_IMPORT_PLUGIN`, with `QT_STATICPLUGIN`) sees what a moc-built plugin shows:
+
+```cpp
+class DemoPlugin : public QObject, public IDemo {
+  RQT_OBJECT
+  Q_INTERFACES(IDemo)                 // expands to nothing; RQT_OBJECT answers the interface id
+ public:
+  int answer() const override { return 42; }
+};
+
+static constexpr unsigned char demo_json[] = {     // the FILE "demo.json"
+#embed "demo.json"
+};
+RQT_PLUGIN_METADATA(DemoPlugin, IDemo_iid, demo_json)    // namespace scope, after the class, in one .cpp
+```
+
+| moc | here |
+|---|---|
+| `FILE "demo.json"` | the `#embed` block above: `#embed` is a directive and cannot stand inside a macro (GCC 16.2 stops with an internal compiler error). GCC finds the file next to the source file that holds the `#embed`, or in a directory named by `--embed-dir=`; the `-I` directories are not searched |
+| `Q_PLUGIN_METADATA(IID IDemo_iid)` (no `FILE`) | `RQT_PLUGIN_METADATA(DemoPlugin, IDemo_iid)`: no `MetaData` key, as moc |
+| a class in a namespace | `RQT_PLUGIN_METADATA_AS(app::DemoPlugin, DemoPlugin, IDemo_iid, demo_json)`: the qualified name, then the name moc puts in `className` |
+
+Limits: the JSON is at most `RQT_PLUGIN_JSON_MAX_BYTES` (32768) bytes, the size every shape measured builds under GCC's default
+`-fconstexpr-ops-limit`; a larger file stops the build with a message naming the macro and the flag
+([`docs/notes/plugin-metadata.md`](../../../docs/notes/plugin-metadata.md) has the measurements). A number with a fraction or an
+exponent must be exact in a `double` (at most 15 digits and a power of ten up to 22), and an integer must fit 19 digits; any other
+stops the build with the byte it was found at. Not checked: input that is not valid UTF-8, clang, MSVC, the macOS and Windows
+metadata sections.
+
 ## Limits
 
 - A `static constexpr QMetaObject const& staticMetaObject = rqt::static_meta_object<T>;` in the class
@@ -427,4 +461,4 @@ class SampleStore : public ObservableContainer<QHash<unsigned, Sample>> {
 - **A non-public function with default arguments has no cloned rows** (private slots).
 - **Interfaces:** `RQT_OBJECT`'s `qt_metacast` answers the interface id of every direct base that has
   one (`Q_DECLARE_INTERFACE`), so `Q_INTERFACES(...)` needs no replacement (it expands to nothing
-  without moc, and stays valid). `Q_PLUGIN_METADATA` is not supported.
+  without moc, and stays valid). `Q_PLUGIN_METADATA` is `RQT_PLUGIN_METADATA`, see "Plugin metadata".

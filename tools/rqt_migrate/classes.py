@@ -57,7 +57,7 @@ QML_MACROS = {
 UNSUPPORTED = {
     "Q_PRIVATE_SLOT": "a slot implemented in the d-pointer class; declare a real member function and annotate it",
     "Q_PRIVATE_PROPERTY": "a property on the d-pointer; add accessors to the class and annotate the READ accessor",
-    "Q_PLUGIN_METADATA": "plugin metadata is emitted by moc into a .qtmetadata section; reflect-moc has no equivalent",
+    "Q_PLUGIN_METADATA": "port by hand: RQT_PLUGIN_METADATA (reflect_moc/qt/plugin.hpp) with the JSON file embedded by #embed next to the class",
     "Q_REVISION": "method and property revisions are not carried by the annotations",
     "Q_SCRIPTABLE": "the scriptable flag is not carried by the annotations",
     "Q_MOC_INCLUDE": "a moc-only include; add the include to the source if the type is needed",

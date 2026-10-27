@@ -303,3 +303,6 @@ add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../examples/qt/spec_regen/bindin
 
 # Moc parity: the matrix in docs/moc-parity.md and one test per construct (tests/qt/parity).
 add_subdirectory(parity)
+
+# Plugin metadata: Q_PLUGIN_METADATA without moc (docs/moc-parity.md E-01, tests/qt/plugin).
+add_subdirectory(plugin)
