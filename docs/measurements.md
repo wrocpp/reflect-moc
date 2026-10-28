@@ -366,6 +366,27 @@ grows with the entry count in a way a drain would notice; the batch removals fal
 a binary search and nothing is rebuilt between the runs. The rows that do not touch the lookup (fill, replace, `insertMany`,
 `resetWith`, the matrix `setValues`) are within about 10 percent of the table above. The Mac was not re-measured.
 
+### After the notification queue (28 Oct 2026)
+
+Addendum 1 of the spec gives every mutating call of the container a notification scope and a queue check. The same `spec_bench/run.sh`,
+seven runs, the same Mac (aarch64, 8 cores, Linux in Docker, g++ 16.2.0, Qt 6.10, shared with other jobs), run once before the change and once after,
+at the 10,000-entry sizes; ns per change, medians. Both runs pass the gate of both bindings first. The load average the script printed at the start was
+0.01 before and 0.96 after, so read the direction and not the last digit.
+
+| container | operation | binding A before | binding A after | binding B before | binding B after |
+|---|---|---|---|---|---|
+| QHash | fill | 153.7 | 162.6 (+6%) | 135.2 | 145.5 (+8%) |
+| QHash | replace | 135.3 | 151.9 (+12%) | 110.6 | 128.9 (+17%) |
+| QHash | drain | 346.3 | 368.1 (+6%) | 388.1 | 398.9 (+3%) |
+| QList | fill | 108.8 | 122.7 (+13%) | 84.1 | 95.2 (+13%) |
+| QList | replace | 87.3 | 95.8 (+10%) | 50.3 | 65.7 (+31%) |
+| QList | drain | 627.0 | 659.2 (+5%) | 606.1 | 633.6 (+5%) |
+
+A single change costs 3 to 31 percent more, 5 to 15 ns in absolute terms, and binding B pays the most on the cheapest operation (a list `replace`,
+50 ns). The batch operations (`insertMany`, `removeMany`) and the matrix `setValues` are within about 5 percent of before; the one larger difference,
+`resetWith` of 1,000 map entries in binding B (+16 percent), lies inside the range of the earlier run. The x86_64 runner was not measured.
+The command for both runs: `RQT_RUNS=7 tests/qt/measure/spec_bench/run.sh` (see How to repeat).
+
 ## The keyed matrix: what one change costs (observable::ObservableMatrix against the spec's matrix)
 
 The spec's matrix (`examples/qt/spec_regen/binding_b`) finds the index of a key in a hash that every change of structure or of a

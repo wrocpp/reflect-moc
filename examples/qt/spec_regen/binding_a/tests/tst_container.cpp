@@ -10,12 +10,17 @@
 
 #include <algorithm>
 #include <map>
+#include <memory>
+#include <stdexcept>
 #include <type_traits>
+#include <utility>
+#include <vector>
 
 namespace {
 
 using CS = obs::ContainerSignals;
 using Log = QList<QString>;
+using IntHash = QHash<int, QString>;
 
 template <class K>
 QString keyText(const QVariant & v)
@@ -101,6 +106,27 @@ QList<QString> stringKeys(const QList<QVariant> & keys)
         out.append(k.value<QString>());
     return out;
 }
+
+// The keys first..last, each with its own number as the value (section 12.10 uses QHash<int, QString>).
+IntHash numbered(int first, int last)
+{
+    IntHash entries;
+    for (int k = first; k <= last; ++k)
+        entries.insert(k, QString::number(k));
+    return entries;
+}
+
+QList<int> sortedKeys(const IntHash & entries)
+{
+    QList<int> keys;
+    for (auto it = entries.constBegin(); it != entries.constEnd(); ++it)
+        keys.append(it.key());
+    std::sort(keys.begin(), keys.end());
+    return keys;
+}
+
+// The chain of AT-10.4 ends here.
+constexpr int kChainEnd = 100;
 
 }  // namespace
 
@@ -409,6 +435,358 @@ private slots:
         QCOMPARE(taken.size(), 1);
         QCOMPARE(atAbout, 2);
         QCOMPARE(atTwin, 1);
+    }
+
+    // Section 12.10 (addendum A.6). Each receiver below acts on the first notification it is told about only, so an
+    // implementation that applies the nested call at once gives a wrong result instead of an endless recursion.
+
+    void at_10_1_aRemovalMadeInsideAnAboutIsAppliedAfterTheGesture()
+    {
+        obs::Container<IntHash> c(numbered(1, 2));
+        Recorder<int> rec(&c);
+        QObject ctx;
+        bool nestedResult = false;
+        bool nestedAppliedAtOnce = true;
+        connect(&c, &CS::entryAboutToBeRemoved, &ctx, [&](const QVariant & k) {
+            if (k.toInt() != 1)
+                return;
+            nestedResult = c.remove(2);
+            nestedAppliedAtOnce = !c.contains(2);
+        });
+        QVERIFY(c.remove(1));
+        QCOMPARE(c.size(), 0);
+        QCOMPARE(rec.log, (Log{"entryAboutToBeRemoved 1", "entryRemoved 1", "entryAboutToBeRemoved 2", "entryRemoved 2"}));
+        QVERIFY(nestedResult);
+        QVERIFY(!nestedAppliedAtOnce);
+    }
+
+    void at_10_2_isNotifyingIsTrueInsideTheGestureOnly()
+    {
+        obs::Container<IntHash> c(numbered(1, 2));
+        QObject ctx;
+        bool insideAbout = false;
+        bool insideTwin = false;
+        connect(&c, &CS::entryAboutToBeRemoved, &ctx, [&] { insideAbout = c.isNotifying(); });
+        connect(&c, &CS::entryRemoved, &ctx, [&] { insideTwin = c.isNotifying(); });
+        QVERIFY(!c.isNotifying());
+        QVERIFY(c.remove(1));
+        QVERIFY(insideAbout);
+        QVERIFY(insideTwin);
+        QVERIFY(!c.isNotifying());
+    }
+
+    void at_10_3_queuedCallsRunInTheOrderTheyWereQueued()
+    {
+        obs::Container<IntHash> c;
+        Recorder<int> rec(&c);
+        QObject ctx;
+        bool insertResult = false;
+        bool removeResult = false;
+        bool fiveAppliedAtOnce = true;
+        connect(&c, &CS::entryAdded, &ctx, [&](const QVariant & k) {
+            if (k.toInt() != 1)
+                return;
+            insertResult = c.insert(5, "five");
+            fiveAppliedAtOnce = c.contains(5);
+            removeResult = c.remove(5);
+        });
+        QVERIFY(c.insert(1, "one"));
+        QVERIFY(c.contains(1));
+        QVERIFY(!c.contains(5));
+        QCOMPARE(rec.log, (Log{"entryAboutToBeAdded 1", "entryAdded 1", "entryAboutToBeAdded 5", "entryAdded 5",
+                               "entryAboutToBeRemoved 5", "entryRemoved 5"}));
+        QVERIFY(insertResult);
+        QVERIFY(removeResult);
+        QVERIFY(!fiveAppliedAtOnce);
+    }
+
+    void at_10_4_aChainOfReactionsDoesNotRecurse()
+    {
+        obs::Container<IntHash> c;
+        QObject ctx;
+        int depth = 0;
+        int maxDepth = 0;
+        connect(&c, &CS::entryAdded, &ctx, [&](const QVariant & v) {
+            ++depth;
+            maxDepth = std::max(maxDepth, depth);
+            const int k = v.toInt();
+            if (k < kChainEnd)
+                c.insert(k + 1, QString::number(k + 1));
+            --depth;
+        });
+        QVERIFY(c.insert(1, "1"));
+        QCOMPARE(c.size(), kChainEnd);
+        for (int k = 1; k <= kChainEnd; ++k)
+            QVERIFY(c.contains(k));
+        QCOMPARE(maxDepth, 1);
+    }
+
+    void at_10_5_theSameKeyRemovedInsideItsOwnAboutIsAnnouncedOnce()
+    {
+        {
+            obs::Container<IntHash> c(numbered(1, 1));
+            Recorder<int> rec(&c);
+            QObject ctx;
+            bool first = true;
+            connect(&c, &CS::entryAboutToBeRemoved, &ctx, [&] {
+                if (std::exchange(first, false))
+                    c.remove(1);
+            });
+            QVERIFY(c.remove(1));
+            QCOMPARE(rec.count("entryRemoved"), 1);
+            QCOMPARE(rec.count("entryAboutToBeRemoved"), 1);
+            QVERIFY(!c.contains(1));
+        }
+        {
+            obs::Container<IntHash> c(IntHash{{1, "one"}});
+            Recorder<int> rec(&c);
+            QObject ctx;
+            bool first = true;
+            std::optional<QString> nested = QStringLiteral("untouched");
+            connect(&c, &CS::entryAboutToBeRemoved, &ctx, [&] {
+                if (std::exchange(first, false))
+                    nested = c.take(1);
+            });
+            const std::optional<QString> outer = c.take(1);
+            QVERIFY(!nested.has_value());
+            QVERIFY(outer.has_value());
+            QCOMPARE(*outer, QStringLiteral("one"));
+            QCOMPARE(rec.log, (Log{"entryAboutToBeRemoved 1", "entryRemoved 1"}));
+        }
+    }
+
+    void at_10_6_aBatchAnnouncesAKeyRemovedInsideItOnce()
+    {
+        obs::Container<IntHash> c(numbered(1, 10));
+        Recorder<int> rec(&c);
+        QObject ctx;
+        bool first = true;
+        bool nestedResult = false;
+        connect(&c, &CS::entriesAboutToBeRemoved, &ctx, [&] {
+            if (std::exchange(first, false))
+                nestedResult = c.remove(5);
+        });
+        QCOMPARE(c.removeMany(QList<int>{2, 5, 8}), 3);
+        QCOMPARE(rec.log, (Log{"entriesAboutToBeRemoved [2,5,8]", "entriesRemoved [2,5,8]"}));
+        QCOMPARE(rec.count("entryAboutToBeRemoved"), 0);
+        QCOMPARE(sortedKeys(c.data()), (QList<int>{1, 3, 4, 6, 7, 9, 10}));
+        QVERIFY(nestedResult);
+    }
+
+    void at_10_7_takeManyDuringANotificationDoesNothing()
+    {
+        obs::Container<IntHash> c(numbered(1, 3));
+        Recorder<int> rec(&c);
+        QObject ctx;
+        bool first = true;
+        IntHash taken{{9, "untouched"}};
+        connect(&c, &CS::entryAboutToBeAdded, &ctx, [&] {
+            if (std::exchange(first, false))
+                taken = c.takeMany(QList<int>{1, 2});
+        });
+        QVERIFY(c.insert(4, "4"));
+        QVERIFY(taken.isEmpty());
+        QCOMPARE(rec.log, (Log{"entryAboutToBeAdded 4", "entryAdded 4"}));
+        QCOMPARE(sortedKeys(c.data()), (QList<int>{1, 2, 3, 4}));
+    }
+
+    void at_10_8_aQueuedEditValueRunsAfterTheTwinWithItsRoles()
+    {
+        const int role = Qt::UserRole + 1;
+        const QString roleText = QString::number(role);
+        obs::Container<IntHash> c(IntHash{{2, "two"}});
+        Recorder<int> rec(&c);
+        QObject ctx;
+        bool queuedResult = false;
+        bool ranAtOnce = true;
+        connect(&c, &CS::entryAdded, &ctx, [&](const QVariant & k) {
+            if (k.toInt() != 1)
+                return;
+            queuedResult = c.editValue(
+                2,
+                [log = &rec.log](QString & v) {
+                    log->append(QStringLiteral("f runs"));
+                    v += QStringLiteral("!");
+                },
+                QList<int>{role});
+            ranAtOnce = rec.log.contains(QStringLiteral("f runs"));
+        });
+        QVERIFY(c.insert(1, "one"));
+        QCOMPARE(rec.log, (Log{"entryAboutToBeAdded 1", "entryAdded 1", "entryDataAboutToChange 2 {" + roleText + "}", "f runs",
+                               "entryDataChanged 2 {" + roleText + "}"}));
+        QCOMPARE(*c.find(2), QStringLiteral("two!"));
+        QVERIFY(queuedResult);
+        QVERIFY(!ranAtOnce);
+    }
+
+    void at_10_9_aQueuedClearAndAQueuedResetWithEmitTheirPairsAtTheirTurn()
+    {
+        {
+            obs::Container<IntHash> c(numbered(1, 2));
+            Recorder<int> rec(&c);
+            QObject ctx;
+            qsizetype sizeRightAfterQueueing = -1;
+            connect(&c, &CS::entryAdded, &ctx, [&](const QVariant & k) {
+                if (k.toInt() != 3)
+                    return;
+                c.clear();
+                sizeRightAfterQueueing = c.size();
+            });
+            QVERIFY(c.insert(3, "3"));
+            QCOMPARE(rec.log, (Log{"entryAboutToBeAdded 3", "entryAdded 3", "aboutToBeCleared", "cleared"}));
+            QCOMPARE(c.size(), 0);
+            QCOMPARE(sizeRightAfterQueueing, 3);
+        }
+        {
+            obs::Container<IntHash> c(numbered(1, 2));
+            Recorder<int> rec(&c);
+            QObject ctx;
+            qsizetype sizeRightAfterQueueing = -1;
+            connect(&c, &CS::entryAdded, &ctx, [&](const QVariant & k) {
+                if (k.toInt() != 3)
+                    return;
+                c.resetWith(numbered(7, 8));
+                sizeRightAfterQueueing = c.size();
+            });
+            QVERIFY(c.insert(3, "3"));
+            QCOMPARE(rec.log, (Log{"entryAboutToBeAdded 3", "entryAdded 3", "aboutToBeReset", "resetCompleted"}));
+            QCOMPARE(sortedKeys(c.data()), (QList<int>{7, 8}));
+            QCOMPARE(sizeRightAfterQueueing, 3);
+        }
+    }
+
+    // Not an acceptance test (N8): a queued batch reports the number of keys requested, whatever the content decides at its
+    // turn.
+    void extra_n8_aQueuedBatchReturnsTheNumberOfKeysRequested()
+    {
+        obs::Container<IntHash> c(numbered(1, 3));
+        QObject ctx;
+        bool first = true;
+        qsizetype inserted = -1;
+        qsizetype removed = -1;
+        connect(&c, &CS::entryAdded, &ctx, [&] {
+            if (!std::exchange(first, false))
+                return;
+            inserted = c.insertMany(IntHash{{1, "present"}, {20, "20"}, {21, "21"}});
+            removed = c.removeMany(QList<int>{2, 2, 77});
+        });
+        QVERIFY(c.insert(9, "9"));
+        QCOMPARE(inserted, 3);
+        QCOMPARE(removed, 3);
+        QCOMPARE(sortedKeys(c.data()), (QList<int>{1, 3, 9, 20, 21}));
+    }
+
+    // Not an acceptance test (N6): a call on another container is not queued by this one; it follows that container's own state.
+    void extra_n6_aCallOnAnotherContainerFollowsThatContainersOwnState()
+    {
+        obs::Container<IntHash> a;
+        obs::Container<IntHash> b;
+        QObject ctx;
+        bool bAppliedAtOnce = false;
+        bool aAppliedAtOnce = true;
+        connect(&a, &CS::entryAdded, &ctx, [&](const QVariant & k) {
+            if (k.toInt() != 1)
+                return;
+            b.insert(7, "7");
+            bAppliedAtOnce = b.contains(7);
+        });
+        connect(&b, &CS::entryAdded, &ctx, [&] {
+            a.insert(2, "2");
+            aAppliedAtOnce = a.contains(2);
+        });
+        QVERIFY(a.insert(1, "1"));
+        QVERIFY(bAppliedAtOnce);
+        QVERIFY(!aAppliedAtOnce);
+        QCOMPARE(sortedKeys(a.data()), (QList<int>{1, 2}));
+        QCOMPARE(sortedKeys(b.data()), (QList<int>{7}));
+    }
+
+    // Not an acceptance test (N11): the index of a queued insert, remove or replace is read when the call is applied.
+    void extra_n11_aQueuedPositionalCallUsesTheStateAtItsTurn()
+    {
+        obs::Container<QList<int>> c(QList<int>{10, 20, 30});
+        QObject ctx;
+        bool first = true;
+        QList<int> rightAfterQueueing;
+        connect(&c, &CS::entryAdded, &ctx, [&] {
+            if (!std::exchange(first, false))
+                return;
+            c.remove(0);
+            c.remove(0);
+            c.replace(0, 7);
+            c.insert(1, 8);
+            rightAfterQueueing = c.data();
+        });
+        QVERIFY(c.append(99));
+        QCOMPARE(c.data(), (QList<int>{7, 8, 99}));
+        QCOMPARE(rightAfterQueueing, (QList<int>{10, 20, 30, 99}));
+    }
+
+    // Pins a reading where N11 is silent: append is insert(size(), v) with the size read at its turn, so it still goes to the end
+    // after an earlier queued insert has grown the container.
+    void pin_n11_aQueuedAppendGoesToTheEndAtItsTurn()
+    {
+        obs::Container<QList<int>> c(QList<int>{10});
+        QObject ctx;
+        bool first = true;
+        QList<int> rightAfterQueueing;
+        connect(&c, &CS::entryAdded, &ctx, [&] {
+            if (!std::exchange(first, false))
+                return;
+            c.insert(0, 5);
+            c.append(30);
+            rightAfterQueueing = c.data();
+        });
+        QVERIFY(c.append(20));
+        QCOMPARE(c.data(), (QList<int>{5, 10, 20, 30}));
+        QCOMPARE(rightAfterQueueing, (QList<int>{10, 20}));
+    }
+
+    // Pins a reading where the addendum is silent (R2): a receiver that throws abandons the gesture, the calls it had queued are
+    // dropped, and the container accepts the next gesture as if nothing had happened.
+    void pin_r2_aThrowingReceiverDropsTheQueueAndLeavesTheContainerUsable()
+    {
+        obs::Container<IntHash> c;
+        QObject ctx;
+        connect(&c, &CS::entryAdded, &ctx, [&](const QVariant & k) {
+            if (k.toInt() != 1)
+                return;
+            c.insert(2, "2");
+            throw std::runtime_error("receiver failed");
+        });
+        bool thrown = false;
+        try {
+            c.insert(1, "1");
+        } catch (const std::runtime_error &) {
+            thrown = true;
+        }
+        QVERIFY(thrown);
+        QVERIFY(!c.isNotifying());
+        QVERIFY(!c.contains(2));
+        QVERIFY(c.insert(3, "3"));
+        QCOMPARE(sortedKeys(c.data()), (QList<int>{1, 3}));
+    }
+
+    // Pins a reading where N10 is silent: the queue does not need a copyable value or a copyable callable (std::function and
+    // std::move_only_function are not available in C++20 for this).
+    void pin_n10_aQueuedCallTakesAMoveOnlyValueAndAMoveOnlyCallable()
+    {
+        obs::Container<std::vector<std::unique_ptr<int>>> c;
+        QObject ctx;
+        bool first = true;
+        qsizetype sizeRightAfterQueueing = -1;
+        connect(&c, &CS::entryAdded, &ctx, [&] {
+            if (!std::exchange(first, false))
+                return;
+            c.append(std::make_unique<int>(2));
+            c.editValue(0, [bonus = std::make_unique<int>(40)](std::unique_ptr<int> & v) { *v += *bonus; });
+            sizeRightAfterQueueing = c.size();
+        });
+        QVERIFY(c.append(std::make_unique<int>(1)));
+        QCOMPARE(c.size(), 2);
+        QCOMPARE(sizeRightAfterQueueing, 1);
+        QCOMPARE(*c.data()[0], 41);
+        QCOMPARE(*c.data()[1], 2);
     }
 };
 

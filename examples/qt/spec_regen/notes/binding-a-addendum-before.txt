@@ -1,0 +1,45 @@
+Before the library change: the new tests against the unchanged library
+=======================================================================
+
+Setup: Debug build, GCC 16.2, Qt 6.10.3, flags -Wall -Wextra -Wpedantic, 0 compiler warnings.
+The library is the tree as delivered plus ONE temporary stub, `bool isNotifying() const noexcept { return false; }` in
+obs::Container (needed only to compile AT-10.2 and the pin test that calls it). The stub is removed in step 3.
+Every new test function was run on its own (`./tst_container <function>`), so one crash cannot hide another test.
+The reason on each line is the first check that fails; where a test's own stated checks (the AT text) all hold and only a
+check I added fails, the line says so.
+
+AT-10.1  fail   recorder holds "entryAboutToBeRemoved 2" at index 1: the nested remove(2) is applied at once, inside the about of 1
+AT-10.2  fail   isNotifying() is false inside the receiver (the stub; there is no scope yet)
+AT-10.3  fail   the AT's own checks hold (immediate application gives the same recorder log, because the receiver is the last
+                one to run); my N2 check fails: key 5 is already present right after the queued insert(5) returned
+AT-10.4  fail   maximum nesting depth of entryAdded is 100, not 1 (the chain recurses)
+AT-10.5  fail   entryRemoved(1) is emitted 2 times (the nested remove(1) runs inside the about, the outer one then erases again);
+                no crash, because the receiver acts on its first call only
+AT-10.6  fail   the recorder holds 4 lines, not 2: the nested remove(5) announces a per-entry pair inside the batch
+AT-10.7  fail   takeMany returned a non-empty C: it took keys 1 and 2 at once
+AT-10.8  fail   the AT's own checks hold (same order as the queued case, receiver last); my N2 check fails: f had already run when
+                the nested editValue returned
+AT-10.9  fail   the AT's own recorder check holds (same order again); my check fails: size() is 0 right after the nested clear()
+                returned, and likewise after resetWith, so the call was not queued
+AT-10.10 fail   tst_list_model: the model's rows differ from {1,4,6,7,9,10} at index 2 (row of key 5 kept, key 6 gone): the view's
+                remove(3) lands between two cycles of the batch and the stale row index of the next cycle hits the wrong row
+AT-10.11 fail   tst_list_model: the model's rows differ from {5,10,15,17,20,25,30} at index 4 (25 shown where 20 belongs): the view's
+                insert(17) changes the row list between two cycles, so the next cycle inserts at a stale position
+AT-10.12 crash  tst_list_model: SIGSEGV (signal 11, access at 0xfffffffffffffffc, i.e. begin() - 1). Before the crash the
+                QAbstractItemModelTester reported five failures (change in flight, rowCount, index(0,0)): the receiver ahead of
+                the model removes the key before the model has a row for it, rowOf gives -1, and the model calls
+                beginRemoveRows(-1, -1) and then erases begin() - 1
+
+Tests I added that are not among the twelve (they pin a reading, or check a rule the twelve do not reach):
+extra_n8_aQueuedBatchReturnsTheNumberOfKeysRequested                    fail   insertMany inside a receiver returned 2 (the number applied), not 3 (the number requested)
+extra_n11_aQueuedPositionalCallUsesTheStateAtItsTurn                    fail   the container already changed right after the queued calls (3 entries, not 4); the final content is the same either way
+pin_n11_aQueuedAppendGoesToTheEndAtItsTurn                              fail   the container already holds 4 entries right after the queued calls; the final content is the same either way
+pin_r2_aThrowingReceiverDropsTheQueueAndLeavesTheContainerUsable        fail   key 2 is present: the nested insert(2) was applied at once, before the receiver threw
+pin_n10_aQueuedCallTakesAMoveOnlyValueAndAMoveOnlyCallable              fail   the container already holds 2 entries right after the nested append and editValue returned
+extra_n6_aCallOnAnotherContainerFollowsThatContainersOwnState           fail   (added after the run above, measured later on a private copy of the unchanged library plus the stub) key 2 is present in
+                                                                               the first container as soon as the second container's receiver asked for it: nothing is queued
+
+Whole executables, one run each, for the record:
+tst_container  : 18 passed, 14 failed (the 9 ATs above plus the 5 extra tests above), no crash
+tst_list_model : crashes in AT-10.12 (SIGSEGV) after AT-10.10 and AT-10.11 failed; the 14 earlier test functions passed
+The 17 existing ctest entries were not run in this step.

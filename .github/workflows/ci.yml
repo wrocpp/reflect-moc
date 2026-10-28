@@ -39,6 +39,15 @@ jobs:
           docker run --rm -v "$PWD":/src -w /src "$IMAGE" \
             sh -c 'cmake --preset qt && cmake --build --preset qt -j"$(nproc)" && ctest --preset qt -j2'
 
+      # Binding B of the regenerated spec runs inside the preset above. Binding A
+      # (classic moc, C++20) is its own CMake project and also builds here, so a
+      # change to the spec tests runs on Linux and not only under MSVC. Built out
+      # of tree, with the checkout mounted read-only.
+      - name: Binding A of the regenerated spec builds and passes its tests
+        run: |
+          docker run --rm -v "$PWD":/src:ro -w /src "$IMAGE" \
+            sh -c 'cmake -S examples/qt/spec_regen/binding_a -B /tmp/build-a -G Ninja -DCMAKE_BUILD_TYPE=Debug && cmake --build /tmp/build-a -j"$(nproc)" && ctest --test-dir /tmp/build-a --output-on-failure'
+
       - name: Tool tests
         run: |
           docker run --rm -v "$PWD":/src -w /src "$IMAGE" \

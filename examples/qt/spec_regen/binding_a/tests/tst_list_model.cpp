@@ -12,11 +12,13 @@
 #include <algorithm>
 #include <random>
 #include <type_traits>
+#include <utility>
 
 namespace {
 
 using CS = obs::ContainerSignals;
 using Log = QList<QString>;
+using IntHash = QHash<int, QString>;
 
 template <class K>
 QString keyText(const QVariant & v)
@@ -209,6 +211,44 @@ bool rowOfAgreesWithTheRows(unsigned seed)
                 return false;
         }
         if (model.rowCount() != sorted.size())
+            return false;
+    }
+    return true;
+}
+
+// Section 12.10: QHash<int, QString>, each value the key's own number as text.
+IntHash numbered(const QList<int> & keys)
+{
+    IntHash entries;
+    for (const int k : keys)
+        entries.insert(k, QString::number(k));
+    return entries;
+}
+
+QList<int> sortedKeys(const IntHash & entries)
+{
+    QList<int> keys;
+    for (auto it = entries.constBegin(); it != entries.constEnd(); ++it)
+        keys.append(it.key());
+    std::sort(keys.begin(), keys.end());
+    return keys;
+}
+
+template <class M>
+QList<int> modelKeys(const M & model)
+{
+    QList<int> keys;
+    for (int r = 0; r < model.rowCount(); ++r)
+        keys.append(model.keyAt(r));
+    return keys;
+}
+
+// Every row reads the value of its own key: the model and the container are in step.
+template <class M>
+bool rowsReadTheirOwnValue(const M & model)
+{
+    for (int r = 0; r < model.rowCount(); ++r) {
+        if (model.data(model.index(r, 0), Qt::DisplayRole).toString() != QString::number(model.keyAt(r)))
             return false;
     }
     return true;
@@ -428,6 +468,55 @@ private slots:
         QVERIFY(c.replace("e", 2));  // "e" is row 4 now
         QCOMPARE(spy.takeLast().at(0).toModelIndex().row(), 4);
         QCOMPARE(model.rowOf("e"), 4);
+    }
+
+    // Section 12.10 (addendum A.6). The view's receiver acts the first time it runs only.
+
+    void at_10_10_aViewThatRemovesWhileABatchRemovalIsTranslated()
+    {
+        obs::Container<IntHash> c(numbered({1, 2, 3, 4, 5, 6, 7, 8, 9, 10}));
+        TestModel<IntHash> model(c);
+        QAbstractItemModelTester tester(&model, kQtTest);
+        QObject view;
+        bool first = true;
+        connect(&model, &QAbstractItemModel::rowsRemoved, &view, [&] {
+            if (std::exchange(first, false))
+                c.remove(3);
+        });
+        QCOMPARE(c.removeMany(QList<int>{2, 5, 8}), 3);
+        QCOMPARE(modelKeys(model), (QList<int>{1, 4, 6, 7, 9, 10}));
+        QCOMPARE(modelKeys(model), sortedKeys(c.data()));
+        QVERIFY(rowsReadTheirOwnValue(model));
+    }
+
+    void at_10_11_aViewThatInsertsWhileABatchInsertionIsTranslated()
+    {
+        obs::Container<IntHash> c(numbered({10, 20, 30}));
+        TestModel<IntHash> model(c);
+        QAbstractItemModelTester tester(&model, kQtTest);
+        QObject view;
+        bool first = true;
+        connect(&model, &QAbstractItemModel::rowsInserted, &view, [&] {
+            if (std::exchange(first, false))
+                c.insert(17, QStringLiteral("17"));
+        });
+        QCOMPARE(c.insertMany(numbered({5, 15, 25})), 3);
+        QCOMPARE(modelKeys(model), (QList<int>{5, 10, 15, 17, 20, 25, 30}));
+        QCOMPARE(modelKeys(model), sortedKeys(c.data()));
+        QVERIFY(rowsReadTheirOwnValue(model));
+    }
+
+    void at_10_12_aReceiverAheadOfTheModelThatRemovesTheKeyJustAddedLeavesNoGhostRow()
+    {
+        obs::Container<IntHash> c;
+        QObject ahead;
+        connect(&c, &CS::entryAdded, &ahead, [&](const QVariant & k) { c.remove(k.toInt()); });
+        TestModel<IntHash> model(c);
+        QAbstractItemModelTester tester(&model, kQtTest);
+        QVERIFY(c.insert(7, QStringLiteral("seven")));
+        QVERIFY(!c.contains(7));
+        QCOMPARE(model.rowCount(), 0);
+        QCOMPARE(model.rowOf(7), -1);
     }
 };
 

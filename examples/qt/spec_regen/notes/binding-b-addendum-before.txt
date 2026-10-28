@@ -1,0 +1,45 @@
+Binding B, before the implementation: the twelve acceptance tests (and the tests beyond them) against the library as delivered,
+plus the temporary stub `bool isNotifying() const noexcept { return false; }` in obs::Container (only AT-10.2 needs it to compile;
+the extras use it too). Debug, GCC 16.2, 0 compiler warnings. Every test function was run alone (notes/run-each.sh), so a crash
+costs only that function. Raw lines: notes/before-each.txt.
+
+The twelve
+  AT-10.1   fail   rec.log starts with entryAboutToBeRemoved(2): the nested remove(2) ran at once, inside the about of 1
+  AT-10.2   fail   isNotifying() is the stub, so it is false inside the receiver
+  AT-10.3   fail   rec.log[1] is entryAboutToBeAdded(5): insert(5) and remove(5) ran at once, before the recorder saw entryAdded(1)
+                   (the stated clauses alone, "1 present, 5 absent", hold on the old code; the test connects the reacting
+                   receiver before the recorder so that the log can tell queued from immediate)
+  AT-10.4   fail   deepest nesting 100, not 1: every insert recursed into the next
+  AT-10.5a  fail   remove(1) inside the about of 1: entryRemoved(1) emitted twice (the receiver acts the first time only; without
+                   that guard the old code would recurse until the stack ends)
+  AT-10.5b  crash  SIGSEGV: the nested take(1) erased the entry inside the about, the outer take then dereferenced the null
+                   pointer of its second lookup (the pointer taken before the about, A.5)
+  AT-10.6   fail   rec.log has 4 entries, not 2: a per-entry pair for 5 inside the batch
+  AT-10.7   fail   takeMany returned the two entries, taken during the notification (and removed them)
+  AT-10.8   fail   rec.log[1] is entryDataAboutToChange(7,[261]): f ran at once, between the outer about and its twin
+  AT-10.9   fail   rec.log[0] is aboutToBeCleared: clear() ran inside the about of the insert (the resetWith half not reached)
+  AT-10.10  fail   rows are 1 4 5 ... where the container has 1 4 6 ...: the view's remove(3) between two cycles made the
+                   precomputed row indices of the next cycle stale, and it removed the wrong row
+  AT-10.11  fail   rows are ... 17 25 20 ...: the view's insert(17) between two cycles made the precomputed positions stale
+  AT-10.12  crash  SIGABRT: remove(k) ran before the model had the row; rowOf(k) was -1, the tester reported five failures and
+                   std::vector::insert asserted
+
+Beyond the twelve (tests derived from points of the addendum that have no acceptance test of their own, and readings of mine)
+  capability_aQueuedCallIsKeptAndNotAppliedWhereItIsMade (N2, N8)                          fail   the call was applied at once
+  capability_aCallOnAnotherContainerFollowsThatContainersOwnState (N6)                     fail   isNotifying() stub; A's call applied at once
+  capability_callsQueuedByAQueuedCallGoToTheBackOfTheQueue (N4)                            fail   immediate: 4 before 2 and 3
+  capability_aQueuedSequentialIndexMeansTheStateAtItsTurn (N11)                            fail   applied at once
+  capability_everyCycleOfTheModelRunsInsideTheContainersScope (A.5, list model)            fail   isNotifying() stub
+  reading_aQueuedCallAnswersQueuedEvenWhenItWillBeRejectedAtItsTurn (N5, N8)               fail   rejected calls answered false
+  reading_aReceiverThatThrowsLeavesTheContainerUsableAndDropsTheQueue                      fail   the nested insert(2) had been applied at once
+  reading_aContainerDestroyedByAReceiverOfATwinEndsTheGestureQuietly                       pass   a smoke test: it cannot fail on the old
+                                                                                                 code, which touches nothing after the twin
+                                                                                                 (see the report for what it does and does not show)
+
+Added after the before-run, so not measured on the old library: capability_aQueuedCallCanOwnAMoveOnlyValueAndAMoveOnlyCallable (N10)
+and reading_aReceiverOfADrainedCallThatThrowsDropsTheRestOfTheQueue. (Both are written for the new behaviour; the first would also
+pass on the old library, which applies the calls at once.)
+
+The existing test functions of tst_container and tst_list_model (the ones that were there) all pass on the old library: 37 functions
+with exit 0 in notes/before-each.txt, none of them edited. The other three test executables and the compile-fail entries are not
+part of the before-run; the full ctest is the after-run.

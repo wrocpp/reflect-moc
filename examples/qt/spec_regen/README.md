@@ -2,7 +2,7 @@
 
 Leonardo Rossi wrote the design of his observable containers, item models and row selection down as a
 specification an AI agent can regenerate the library from: [`SPEC.md` and `PROMPT.md`](https://gist.github.com/96Ven96/100c0ec4917dced4d6c8ac9a4cc06b7e)
-(revision `d1e540d`). He offered it as a contribution and asked to be told where an agent trips.
+(revision `d1e540d`; the addendum below is revision `a2fc33b`). He offered it as a contribution and asked to be told where an agent trips.
 This directory is the answer. The gist carries no license, so its text is credited and linked here, not copied.
 
 | | Binding A | Binding B |
@@ -11,7 +11,8 @@ This directory is the answer. The gist carries no license, so its text is credit
 | Language | C++20 | C++26 with `-freflection` (GCC 16.2) |
 | Directory | [`binding_a`](binding_a) | [`binding_b`](binding_b) |
 | Build | standalone: `cmake -S binding_a -B build` | standalone, or through `tests/qt` of this repository |
-| Acceptance tests (ctest) | 17 of 17 | 17 of 17 |
+| ctest entries | 18 of 18 (17 acceptance entries and the matrix pin) | 18 of 18 |
+| Acceptance tests inside them | AT-1.1 to AT-10.12 | AT-1.1 to AT-10.12 |
 
 ## How it was made
 
@@ -47,6 +48,27 @@ Not done: Clang for binding B (it needs reflection, which only GCC 16 has here),
 connections and threads, QML, key types other than `int`, `quint32`, `qsizetype` and `QString`. The generated code is pinned by the
 acceptance tests and is not held to the CRAP and mutation rules of the hand-written examples; the binding B agent
 ran five hand-made mutants and one survived, which it killed with a new test (`at_3_6_replaceWritesBetweenTheAboutAndTheTwin`).
+
+## Addendum 1: a change made during a notification (28 Oct 2026)
+
+The spec's author answered the nested-change question of the [228-cases post](https://wrocpp.github.io/posts/qt-model-edge-cases-catalogue/)
+with an addendum in the same gist ([revision `a2fc33b`](https://gist.github.com/96Ven96/100c0ec4917dced4d6c8ac9a4cc06b7e/a2fc33b0d04280c896e72a69a90e234b94ba7c44),
+`SPEC.md` is unchanged in it): a change made while the same container notifies is queued, and the queue drains in order when the
+outermost notification closes. Twelve acceptance tests, AT-10.1 to AT-10.12, come with it. The text is not copied here (no licence); the points are named N1 to N11 as in the gist.
+
+Both bindings got it from a fresh agent each, test first: the agent had the tree, the spec, the prompt and the addendum, and no other code.
+The reports, with every reading it chose where the addendum is silent, are in [`notes`](notes):
+[binding A](notes/binding-a-addendum-report.md) and [binding B](notes/binding-b-addendum-report.md), and the per-test result on the old
+library in `binding-a-addendum-before.txt` and `binding-b-addendum-before.txt`. Before the change, with a stub `isNotifying()`, the tests fail
+or crash in both bindings (binding A: 8 fail, AT-10.12 crashes, three pass as the addendum words them and got a check inside the receiver; binding B: all fail
+and two crash). After it, every AT-10 test passes in Debug and Release with 0 warnings, and binding B is clean under AddressSanitizer and UBSan.
+
+The matrix is outside the addendum on purpose: its author has no test that shows the failure. [`notes/matrix-nested-change.md`](notes/matrix-nested-change.md)
+is that test (`limit_matrix_nested_change` in each binding): 32 nested cases, 20 crash, 4 end out of step, 8 stay consistent.
+
+Mutation testing of the two bindings has ten more mutants each for the queue: binding A 63 mutants, 61 killed; binding B 64 mutants, 62 killed;
+each has the old equivalent mutant and one guard that no test can see (reasons in `scripts/mutants_spec_regen.py`). The queue costs 3 to 31 percent more
+per single change and nothing measurable on batches ([`docs/measurements.md`](../../../docs/measurements.md)). Binding A on MSVC is checked by the CI job.
 
 ## Mutation testing of the two bindings
 
