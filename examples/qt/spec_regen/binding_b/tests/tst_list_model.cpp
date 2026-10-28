@@ -106,6 +106,34 @@ QStringList displayedRows(const Model & model)
     return rows;
 }
 
+// SPEC addendum A.6: QHash<int, QString> unless a test says otherwise
+using Names = QHash<int, QString>;
+using NamesSource = obs::Container<Names>;
+
+QList<int> sortedKeys(const NamesSource & c)
+{
+    QList<int> keys = c.data().keys();
+    std::sort(keys.begin(), keys.end());
+    return keys;
+}
+
+template <class Model>
+QList<int> rowKeys(const Model & model)
+{
+    QList<int> keys;
+    for (int r = 0; r < model.rowCount(); ++r)
+        keys << model.keyAt(r);
+    return keys;
+}
+
+Names namesFromOneTo(int last)
+{
+    Names names;
+    for (int key = 1; key <= last; ++key)
+        names.insert(key, QString::number(key));
+    return names;
+}
+
 using Letters = QMap<QString, QString>;
 
 Letters lettersOf(const QStringList & keys)
@@ -437,6 +465,96 @@ private slots:
         QVERIFY(c.replace("e", "2"));  // "e" is row 4 now
         QCOMPARE(spy.takeLast().at(0).toModelIndex().row(), 4);
         QCOMPARE(model.rowOf("e"), 4);
+    }
+
+    // SPEC addendum A.6 (section 12.10): the model's cycles run inside the container's notification scope, so a change a view
+    // makes while the model is announcing a batch is queued and arrives after the last cycle. A view that would provoke
+    // itself again acts the first time only.
+
+    [[= rqt::slot]] void at_10_10_aViewReactingToABatchRemovalIsAppliedAfterTheLastCycle()
+    {
+        NamesSource c(namesFromOneTo(10));
+        TestModel<Names> model(c);
+        QAbstractItemModelTester tester(&model, kTesterMode);
+        QObject ctx;
+        bool first = true;
+        QObject::connect(&model, &QAbstractItemModel::rowsRemoved, &ctx, [&] {
+            if (first) {
+                first = false;
+                c.remove(3);
+            }
+        });
+
+        QCOMPARE(c.removeMany({2, 5, 8}), 3);
+
+        QCOMPARE(sortedKeys(c), (QList<int>{1, 4, 6, 7, 9, 10}));
+        QCOMPARE(rowKeys(model), sortedKeys(c));
+        QCOMPARE(displayedRows(model), (QStringList{"1", "4", "6", "7", "9", "10"}));
+    }
+
+    [[= rqt::slot]] void at_10_11_aViewReactingToABatchInsertionIsAppliedAfterTheLastCycle()
+    {
+        NamesSource c(Names{{10, "10"}, {20, "20"}, {30, "30"}});
+        TestModel<Names> model(c);
+        QAbstractItemModelTester tester(&model, kTesterMode);
+        QObject ctx;
+        bool first = true;
+        QObject::connect(&model, &QAbstractItemModel::rowsInserted, &ctx, [&] {
+            if (first) {
+                first = false;
+                c.insert(17, "17");
+            }
+        });
+
+        QCOMPARE(c.insertMany(Names{{5, "5"}, {15, "15"}, {25, "25"}}), 3);
+
+        QCOMPARE(rowKeys(model), (QList<int>{5, 10, 15, 17, 20, 25, 30}));
+        QCOMPARE(displayedRows(model), (QStringList{"5", "10", "15", "17", "20", "25", "30"}));
+    }
+
+    // A.5: every cycle of the model, for a single change and for both batches, runs inside the container's notification scope
+    [[= rqt::slot]] void capability_everyCycleOfTheModelRunsInsideTheContainersScope()
+    {
+        NamesSource c(namesFromOneTo(6));
+        TestModel<Names> model(c);
+        QAbstractItemModelTester tester(&model, kTesterMode);
+        QObject ctx;
+        int cycleSignals = 0, outsideTheScope = 0;
+        const auto probe = [&] {
+            ++cycleSignals;
+            outsideTheScope += c.isNotifying() ? 0 : 1;
+        };
+        QObject::connect(&model, &QAbstractItemModel::rowsAboutToBeInserted, &ctx, probe);
+        QObject::connect(&model, &QAbstractItemModel::rowsInserted, &ctx, probe);
+        QObject::connect(&model, &QAbstractItemModel::rowsAboutToBeRemoved, &ctx, probe);
+        QObject::connect(&model, &QAbstractItemModel::rowsRemoved, &ctx, probe);
+
+        QVERIFY(c.insert(7, "7"));                                // one cycle
+        QVERIFY(c.remove(1));                                     // one cycle
+        QCOMPARE(c.insertMany(Names{{10, "10"}, {12, "12"}}), 2);  // rows 6 and 7 of the final list: one run
+        QCOMPARE(c.removeMany({2, 3, 10}), 3);                    // rows 0 and 1, and row 6: two runs
+
+        QCOMPARE(cycleSignals, 10);
+        QCOMPARE(outsideTheScope, 0);
+        QCOMPARE(rowKeys(model), (QList<int>{4, 5, 6, 7, 12}));
+        QVERIFY(!c.isNotifying());
+    }
+
+    [[= rqt::slot]] void at_10_12_aReceiverAheadOfTheModelRemovingTheNewKeyLeavesNoGhostRow()
+    {
+        NamesSource c;
+        QObject ctx;
+        const int added = 4;
+        // connected before the model, so it runs before the model has seen entryAdded
+        QObject::connect(&c, &NamesSource::entryAdded, &ctx, [&](const int & key) { c.remove(key); });
+        TestModel<Names> model(c);
+        QAbstractItemModelTester tester(&model, kTesterMode);
+
+        QVERIFY(c.insert(added, "four"));
+
+        QVERIFY(!c.contains(added));
+        QCOMPARE(model.rowCount(), 0);
+        QCOMPARE(model.rowOf(added), -1);
     }
 };
 
