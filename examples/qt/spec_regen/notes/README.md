@@ -15,3 +15,13 @@ Two points have an answer from the author since (23 Oct 2026). Section 8.3 is a 
 removal cycle must start at the "about" notification, while the entry is still in the container. And the lazy key-to-row
 map of the list model is in his real code too. Both bindings were changed by hand for both; the README lists the hand
 changes.
+
+## Addendum 1 (28 Oct 2026)
+
+Two more reports, written against the addendum on nested changes (gist revision `a2fc33b`) by agents that had the tree and the gist and nothing else.
+
+| file | what it holds |
+|---|---|
+| [`binding-a-addendum-report.md`](binding-a-addendum-report.md), [`binding-a-addendum-before.txt`](binding-a-addendum-before.txt) | binding A: the readings chosen, possible design mistakes, and each AT-10 test on the library before the change |
+| [`binding-b-addendum-report.md`](binding-b-addendum-report.md), [`binding-b-addendum-before.txt`](binding-b-addendum-before.txt) | the same for binding B |
+| [`matrix-nested-change.md`](matrix-nested-change.md) | not an agent report: what the matrix and its table model do when a receiver changes the matrix (the pinned cases) |

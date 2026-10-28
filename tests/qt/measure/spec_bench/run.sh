@@ -4,7 +4,7 @@
 #
 #   docker run --rm -e RQT_RUNS=7 -v "$PWD":/src:ro -w /src reflect-moc/gcc16-qt610 bash tests/qt/measure/spec_bench/run.sh
 #
-# 1. gate: each binding passes its 17 acceptance entries, and a copy whose list model removes runs in
+# 1. gate: each binding passes its 18 ctest entries (the 17 acceptance entries and the matrix pin), and a copy whose list model removes runs in
 #    ascending order (instead of descending) fails tst_list_model
 # 2. the benchmark, RQT_RUNS times (default 7), alternating the two bindings
 # 3. compile time of the benchmark translation unit and binary size, each way
