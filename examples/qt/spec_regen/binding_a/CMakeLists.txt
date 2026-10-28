@@ -56,6 +56,12 @@ kit_add_test(tst_list_model obs_kit)
 kit_add_test(tst_matrix obs_kit)
 kit_add_test(tst_selection obs_kit sel_kit kit_example)
 
+# The matrix has no queue (addendum 1 leaves it out). This pins what a nested change does to the matrix and its table
+# model, case by case, in a child process each (POSIX only).
+if(UNIX)
+    kit_add_test(limit_matrix_nested_change obs_kit)
+endif()
+
 # Must NOT compile: each source is built twice, without and with SK_BREAK.
 # The twin proves the failure comes from the constraint under test.
 set(AT_9_1_TEXT "ValidRoleList")

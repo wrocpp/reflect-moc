@@ -73,6 +73,12 @@ kit_add_test(tst_list_model obs_kit)
 kit_add_test(tst_matrix obs_kit)
 kit_add_test(tst_selection obs_kit sel_kit kit_example)
 
+# The matrix has no queue (addendum 1 leaves it out). This pins what a nested change does to the matrix and its table
+# model, case by case, in a child process each (POSIX only).
+if(UNIX)
+    kit_add_test(limit_matrix_nested_change obs_kit)
+endif()
+
 # Compile-fail: each source twice. The twin must build, the SK_BREAK build must fail with the expected text.
 function(kit_compile_fail id expected)
     set(src ${CMAKE_CURRENT_SOURCE_DIR}/tests/compile_fail/${id}.cpp)
